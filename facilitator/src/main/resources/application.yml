@@ -1,0 +1,48 @@
+server:
+  port: 4022
+
+spring:
+  config:
+    import: optional:${NETWORKS_FILE:}
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  flyway:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/postgres}
+    user: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    schemas: ${DB_SCHEMA:facilitator}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: readinessState,db,chainReadiness
+
+x402:
+  networks:
+    - id: ${X402_NETWORK_ID:cardano:preprod}
+      chain:
+        blockfrost:
+          # Hosted Blockfrost, OR a standalone yaci-store's Blockfrost-compatible
+          # endpoint (e.g. http://yaci-store:8080/api/v1/blockfrost). project-id is
+          # required for hosted Blockfrost and ignored by yaci-store.
+          base-url: ${BLOCKFROST_BASE_URL:https://cardano-preprod.blockfrost.io/api/v0}
+          project-id: ${BLOCKFROST_PROJECT_ID:}
+  # x402.verification / settle / duplicate-cache / http are optional and default to
+  # sensible values in code — set them only to override. See docs/configuration.md.
+  verification:
+    # reference (default) mirrors the TS reference facilitator's no-datum-checks
+    # behavior; strict and v3-optional remain available for stricter deployments.
+    script-datum-policy: reference

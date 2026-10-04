@@ -1,0 +1,357 @@
+# Configuration Reference
+
+All properties live under the `x402` prefix (`config/X402Properties`), set in
+`application.yml` or overridden per environment. Standard Spring relaxed binding
+applies, so `x402.settle.confirmation-depth` is
+`X402_SETTLE_CONFIRMATIONDEPTH` as an environment variable.
+
+Defaults below are the **code** defaults (the `…OrDefault()` accessors), which
+apply when a key is absent entirely. `application.yml` ships explicit values for
+most of them; where the shipped value differs from the code default, both are
+listed.
+
+## Chain backend
+
+There is exactly one chain backend: the cardano-client-lib Blockfrost provider
+(`BFBackendService`, wrapped in `BlockfrostChainService`). Configure it per
+network with `chain.blockfrost.base-url` (env `BLOCKFROST_BASE_URL`) and
+`chain.blockfrost.project-id` (env `BLOCKFROST_PROJECT_ID`) — that's the entire
+surface, no "mode" property involved:
+
+```bash
+BLOCKFROST_PROJECT_ID=... java -jar facilitator.jar
+BLOCKFROST_BASE_URL=http://localhost:8080/api/v1/blockfrost java -jar facilitator.jar
+```
+
+To run against a standalone yaci-store instead of hosted Blockfrost, point
+`base-url` at its Blockfrost-compatible endpoint; `project-id` is required for
+hosted Blockfrost and ignored by yaci-store. Same client, same code path
+either way — see [architecture.md](architecture.md#the-chain-backend).
+yaci-store's own sync/submission configuration (which node to follow, protocol
+magic, N2C socket, sync-start intersect, pruning) lives on the yaci-store
+service itself, not the facilitator; see
+[../deploy/README.md](../deploy/README.md) for the Compose wiring.
+
+## Server and datasource
+
+| Key | Default | Notes |
+|---|---|---|
+| `server.port` | `4022` | |
+| `spring.datasource.url` | `jdbc:postgresql://localhost:5432/postgres` | env `DB_URL` |
+| `spring.datasource.username` | `postgres` | env `DB_USER` |
+| `spring.datasource.password` | `postgres` (local development only) | env `DB_PASSWORD` |
+| `spring.flyway.enabled` | `false` | Deliberate — see below |
+| `spring.threads.virtual.enabled` | `true` | |
+
+`spring.flyway.enabled: false` is not an oversight. The facilitator schema is
+migrated by a **programmatic** runner (`FlywayConfig`) into the `facilitator`
+schema with its own history table — the only Flyway runner in the process now
+that yaci-store, when used, runs as a separate service with its own schema and
+migrations.
+
+## Networks
+
+At least one entry is required; startup fails otherwise.
+
+```yaml
+x402:
+  networks:
+    - id: "cardano:preprod"       # cardano:mainnet | cardano:preprod | cardano:preview
+      required: true              # default true
+      chain:
+        blockfrost:
+          # Hosted Blockfrost, OR a standalone yaci-store's Blockfrost-compatible
+          # endpoint (e.g. http://yaci-store:8080/api/v1/blockfrost). project-id is
+          # required for hosted Blockfrost and ignored by yaci-store.
+          base-url: ${BLOCKFROST_BASE_URL:https://cardano-preprod.blockfrost.io/api/v0}
+          project-id: ${BLOCKFROST_PROJECT_ID:}
+      slot-config:                # optional; overrides the built-in anchor
+        zero-slot: 86400
+        zero-time-epoch-seconds: 1655769600
+        slot-length-ms: 1000
+```
+
+Built-in anchors (`ShelleyNetworkClock`), used when `slot-config` is absent —
+override only if you have a reason:
+
+| Network | `zero-slot` | `zero-time-epoch-seconds` | `slot-length-ms` |
+|---|---|---|---|
+| `cardano:mainnet` | `4492800` | `1596059091` | `1000` |
+| `cardano:preprod` | `86400` | `1655769600` | `1000` |
+| `cardano:preview` | `0` | `1666656000` | `1000` |
+
+**An override needs both `zero-slot` and `zero-time-epoch-seconds`.** Supplying
+only one silently falls back to the built-in anchor for that network rather than
+failing — so a partial override looks applied and isn't. `slot-length-ms`
+defaults to `1000` and may be omitted; an applied override must use a positive length.
+
+Transaction validity uses the current wall-clock slot from this configuration,
+as in the TypeScript SDK. The latest indexed block may be several slots behind;
+its slot is used for chain evidence, not as the clock for a fresh transaction.
+For standard preprod, no slot override is needed. `maxTimeoutSeconds` comes from
+the resource server's quote; settlement waiting time does not change that limit.
+
+| Key | Required | Notes |
+|---|---|---|
+| `id` | yes | Must be a supported network; CIP-34 aliases normalize at startup; duplicate canonical networks are rejected |
+| `required` | no (`true`) | |
+| `chain.blockfrost.base-url` | yes | Hosted Blockfrost or a standalone yaci-store's Blockfrost-compatible endpoint (env `BLOCKFROST_BASE_URL`); startup fails without it |
+| `chain.blockfrost.project-id` | with hosted Blockfrost | Required for hosted Blockfrost, ignored by yaci-store; keep in secrets, not source (env `BLOCKFROST_PROJECT_ID`) |
+| `slot-config.*` | no | Per-network slot↔time anchor; defaults ship in `NetworkClock` |
+
+There's no "at most one" constraint on which target each network points at —
+any number of networks may point at hosted Blockfrost, a standalone
+yaci-store, or a mix, independently. It's the same client either way,
+selected purely by `base-url`.
+
+### Serving several networks
+
+`x402.networks` is a list, and everything downstream is keyed by network id — one
+chain backend, scheme, settlement service and `/supported` entry per network. So
+serving mainnet and preprod from one process needs no code change, only a second
+list entry.
+
+The `x402.settle` operator settings (`accept-mempool`, timeouts and rollback
+watch) apply to every network, and `/supported` advertises the same allowed
+`l1Confirmations` range for each. Resource servers choose the required depth per
+payment through `confirmationPolicy`, so different networks can use different
+requested depths.
+
+### Loading networks from an external file
+
+`application.yml` ships one preprod entry as a development default and imports an
+optional override:
+
+```yaml
+spring:
+  config:
+    import: optional:${NETWORKS_FILE:}
+```
+
+Point `NETWORKS_FILE` at a file shaped like
+[`docs/networks_example.yml`](networks_example.yml) — the natural fit for a
+Kubernetes ConfigMap or a Docker secret, and it keeps project ids out of the
+image:
+
+```bash
+NETWORKS_FILE=file:/etc/x402/networks.yml java -jar facilitator.jar
+```
+
+Three behaviours worth knowing before you rely on it — all verified against
+Spring Boot 3.5, not assumed:
+
+- **The list is replaced, not merged.** An external file defining `x402.networks`
+  discards the entry in `application.yml` entirely. Whatever you point at must
+  name *every* network you want served — including preprod, if you still want it.
+- **The `file:` prefix is required.** `NETWORKS_FILE=./networks.yml` is **silently
+  ignored** — you get the built-in preprod entry and no error. Use
+  `file:./networks.yml`.
+- **A missing file is silently ignored too**, because of the `optional:` prefix.
+  That is what lets the variable be unset, but it also means a typo'd path
+  degrades quietly to the preprod default instead of failing.
+
+The last two make the failure mode "wrong networks served", not "won't start", so
+confirm what actually loaded rather than assuming:
+
+```bash
+curl -s localhost:4022/supported | jq '.kinds[].network'
+```
+
+If the file is unset *and* you have removed the default entry from
+`application.yml`, startup fails with `x402.networks must contain at least one
+network entry` — the message names the property, not `NETWORKS_FILE`.
+
+## Verification
+
+| Key | Default | Notes |
+|---|---|---|
+| `x402.verification.max-tx-bytes` | `32768` | Bound checked pre-decode (A4) and against protocol `maxTxSize` (C3) |
+| `x402.verification.script-datum-policy` | `reference` | `reference` \| `strict` \| `v3-optional` |
+
+`reference` mirrors the TS reference facilitator: no datum-kind checks, except a
+`plutusV1` script whose locked output carries an inline datum is rejected (the
+ledger cannot represent that combination, so the output is guaranteed
+unspendable). `strict` and `v3-optional` are stricter, opt-in policies — see
+[verification.md](verification.md#script--arbitrary-plutus-lock) for the full
+per-policy behavior.
+
+## Settlement
+
+| Key | Default | Notes |
+|---|---|---|
+| `x402.settle.confirmation-timeout` | `75s` | How long `/settle` waits (below the upstream HTTP client’s 90s timeout) |
+| `x402.settle.confirmation-depth` | `1` | Deprecated; requests use confirmationPolicy (default 1) |
+| `x402.settle.poll-interval` | `5s` | Inclusion poll cadence |
+| `x402.settle.accept-mempool` | `false` | **Keep false** |
+| `x402.settle.idempotent-replay` | `false` | Deprecated; retries always reconcile current evidence |
+| `x402.settle.stability-window` | `10m` | Rollback watch window |
+| `x402.settle.reconcile-horizon` | `24h` | Retained for configuration compatibility; no expiry effect. Unknown or TTL-less rows remain pending |
+
+- **`accept-mempool`** — mempool presence is not payment. **Keep it `false`**
+  regardless of chain backend. Turning it on does two things together: `/settle`
+  will release a payment whose 402 asked for `l1Confirmations: -1`, and
+  `/supported` drops its advertised `l1Confirmations.minimum` to `-1` so a
+  resource server can quote it. Both conditions are required — an operator
+  opt-in cannot weaken a stricter 402, and a 402 cannot force an operator to
+  accept reversible evidence.
+- **`confirmation-depth`** — retained for configuration compatibility. The wire
+  policy `extra.confirmationPolicy.l1Confirmations` determines settlement depth,
+  defaulting to `1` when omitted. Depth counts blocks newer than the payment's
+  block: `0` means canonical inclusion. An explicit null policy is invalid.
+- **`stability-window`** — controls the reconciler's rollback watch. HTTP retries
+  always check current evidence, including outside this window.
+- **`idempotent-replay`** — retained for configuration compatibility but no longer
+  controls retries. Matching retries reconcile the existing transaction and do
+  not submit again. Resource servers must persist their own operation-consumption
+  state; facilitator success is evidence of payment, not permission to repeat a
+  business operation.
+
+## Duplicate cache / claim TTL
+
+| Key | Default | Notes |
+|---|---|---|
+| `x402.duplicate-cache.ttl` | `120s` | Also the settlement **claim TTL** |
+
+A new-format, provably pre-broadcast `CLAIMED` row older than this may be
+reclaimed by another worker. Legacy rows and any possibly broadcast row remain
+observation-only. Set it above your realistic submit latency —
+too low and a live worker's claim gets stolen mid-flight.
+
+## HTTP
+
+| Key | Default | Notes |
+|---|---|---|
+| `x402.http.max-request-bytes` | `65536` | Over → `413` |
+| `x402.http.cors-allowed-origins` | `[]` | Empty = **no cross-origin access** |
+
+## Masumi
+
+```yaml
+x402:
+  masumi:
+    allowed-script-hashes:
+      "cardano:mainnet":
+        - "<vested_pay escrow script hash hex>"
+```
+
+Per-network escrow script-hash allowlist. **Enforcement is active only when the
+list is set and non-empty.**
+
+It is a *narrowing*, not the primary control. The facilitator already derives the
+escrow address from the deployment parameters and rejects a `payTo` that does not
+equal it, so a hostile address fails without any allowlist. Set this when you
+want to serve only your own deployment rather than any valid `vested_pay` one.
+
+## API exposure
+
+The facilitator does not authenticate or rate-limit HTTP callers. The former
+`x402.security.*`, `FACILITATOR_API_KEY`, and `FACILITATOR_RATE_LIMIT_RPM`
+settings no longer have any effect. Compose publishes the facilitator API only
+on the host's `127.0.0.1:4022`; other containers on its network can still
+connect. A direct JAR launch uses Spring Boot's normal listener settings and
+does not inherit that host binding. Place any remotely reachable deployment
+behind an operator-managed ingress with TLS, authentication, and traffic limits.
+CORS controls browser access, not caller authentication.
+
+## Provider freshness and readiness
+
+`x402.chain.max-tip-age` defaults to `5m` for every configured network.
+The provider must report the expected genesis magic and a valid latest block
+whose slot time is no older than this setting and no more than 30 seconds in
+the future. A bad tip fails verification lookup, submission admission, and
+inclusion checks. `/health` and `/actuator/health/readiness` report 503 when
+any required network is unhealthy; optional networks are shown but do not
+bring down overall readiness. Actuator liveness remains independent. Health
+probes are cached for at most five seconds and tip age is rechecked on cache
+hits. The wall-clock current-slot calculation remains offline.
+
+The bundled Blockfrost-style provider has no verified watermark showing that
+its transaction index has caught up to its block tip. Even when both the
+transaction and mempool endpoints return 404 after the TTL, it returns
+`NotSeen()` with unknown coverage. The settlement claim remains pending and
+cannot be broadcast again; a previously confirmed row is not demoted by this
+unknown absence. Provider 401, 429, 5xx, timeouts and stale tips also leave
+the journal unchanged. Unobserved rows can occupy reconciliation capacity
+indefinitely until the transaction is found or an independently verified
+index-coverage source is added. Operators must investigate such rows rather
+than delete their claims or manually repeat submission.
+
+Custom `FacilitatorChainService` backends may return
+`NotSeen(observedThroughSlot)` only when they can prove complete transaction
+index coverage through that slot. Terminal expiry additionally requires both
+the observed-through slot and current slot to exceed transaction TTL by 120
+slots. A block tip alone does not satisfy this proof.
+
+## Environment variables (Compose)
+
+| Var | Default | Used by |
+|---|---|---|
+| `POSTGRES_ADMIN_PASSWORD` | `postgres` (local development only) | shared PostgreSQL user for the facilitator and Yaci Store |
+| Facilitator API host port | `127.0.0.1:4022` | Compose publishes locally; remote ingress protection is operator-managed |
+| `BLOCKFROST_BASE_URL` | hosted Blockfrost for `CARDANO_NETWORK` | facilitator — point at a standalone yaci-store's Blockfrost-compatible endpoint instead to use it |
+| `BLOCKFROST_PROJECT_ID` | — | facilitator — required for hosted Blockfrost, ignored by yaci-store |
+| `CARDANO_NETWORK` | `preprod` | All Compose profiles: node, indexer magic, Yano and canonical facilitator `X402_NETWORK_ID` |
+| `CARDANO_NODE_VERSION` | `10.4.1` | node image tag |
+| `X402_NETWORK_ID` | `cardano:preprod` outside Compose | Direct application network selector. Compose derives it from `CARDANO_NETWORK` |
+| `MITHRIL_SYNC` | `true` | `false` skips snapshot restore |
+
+See [../deploy/README.md](../deploy/README.md).
+
+## Minimal production example
+
+```yaml
+x402:
+  networks:
+    - id: "cardano:mainnet"
+      chain:
+        blockfrost:
+          base-url: https://cardano-mainnet.blockfrost.io/api/v0
+          project-id: ${BLOCKFROST_PROJECT_ID}
+  settle:
+    accept-mempool: false
+  masumi:
+    allowed-script-hashes:
+      "cardano:mainnet": [ "${MASUMI_SCRIPT_HASH}" ]
+  http:
+    cors-allowed-origins: [ "https://your-resource-server.example" ]
+```
+
+Select the depth in each resource-server quote, for example
+`extra: {confirmationPolicy: {l1Confirmations: 3}}`.
+
+Work through the [mainnet readiness
+checklist](../deploy/README.md#mainnet-readiness-checklist) before going live.
+
+## Audit remediation compatibility notes
+
+Fresh payments require a finite transaction TTL and a positive `maxTimeoutSeconds`.
+Authenticated post-broadcast retries retain historical inclusion semantics.
+The decoder checks auxiliary metadata commitments against the original CBOR bytes
+and validates metadata bounds and text encoding. It supports legacy metadata maps
+and tag-259 metadata-only envelopes. Auxiliary script bundles, Mary array envelopes
+and other unsupported auxiliary formats are rejected conservatively, including when
+a custom phase-1 validator is installed.
+
+Input resolution uses one request-local session: at most 64 external UTxO calls
+and ten seconds total, including cached lookups. Nonce ownership is authenticated
+before resolving other inputs; address pages are reused within the request. Budget
+exhaustion or lookup-worker saturation returns unknown state and verification fails
+closed. These limits can reject valid payments with large input/address sets.
+Eight non-queued daemon workers cap outstanding provider calls; a provider ignoring
+interruption can continue after the request deadline but cannot create unlimited
+workers. Inclusion and protocol-parameter I/O have separate paths and are not
+covered by this input-resolution budget. Custom providers inherit a default
+`openUtxoLookup()` implementation; providers making multiple external calls inside
+one lookup should override it to account for every call.
+
+Reconciliation scans at most 200 rows per sweep, ordered by `(claimed_at, tx_hash)`,
+resumes after the previous batch and wraps at the end. Unchanged/unknown observations
+still advance the cursor. Each instance maintains its own cursor, which resets on
+restart; PostgreSQL advisory locking and fenced observations remain in effect.
+
+Configured Blockfrost-compatible providers must expose `/genesis` with the matching
+network magic (`764824073` mainnet, `1` preprod, `2` preview). Identity is checked
+on health and payment chain access; mismatch or unavailable identity fails closed
+and no transaction is submitted. Successful identity checks are cached for 30 seconds.
+Application construction and wall-clock slot calculation remain offline; a provider
+that is still starting makes health/payment checks fail until its identity is available.

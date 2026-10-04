@@ -1,0 +1,51 @@
+{
+  "upstreamCommit": "6323ec74c85607e706e0722dd294365a7fb57768",
+  "cardanoVersion": "2.26.0",
+  "requirements": {
+    "scheme": "exact",
+    "network": "cardano:preprod",
+    "asset": "lovelace",
+    "amount": "3000000",
+    "payTo": "addr_test1wzs4e6wc95hkwezlccjw9mdvq0r0rsgx6zk34avptga3ftgn37w4g",
+    "maxTimeoutSeconds": 600,
+    "extra": {
+      "assetTransferMethod": "masumi",
+      "confirmationPolicy": {
+        "l1Confirmations": 1
+      },
+      "inputCommitment": {
+        "version": "1",
+        "algorithm": "sha256",
+        "parts": [
+          {
+            "name": "body",
+            "canonicalization": "jcs",
+            "content": {
+              "units": "metric",
+              "days": 3
+            },
+            "digest": "e33986d62ef871de151b8258eb9624fbfa220b6f9a4fe170bf168dfa2c957440"
+          }
+        ],
+        "digest": "a04e62604bb67a7e1dc06926a0d6d040fd8d60cc28b2cb5fb94afcfff5d7bcea"
+      },
+      "terms": {
+        "version": "1",
+        "paymentType": "Web3CardanoV2",
+        "sellerAddress": "addr_test1vpt780ulj0qpqs72xwftrvkfuztqxgr43zqk3j4m3x4tndg6qr3hs",
+        "sellerNonce": "0000000000000000000000000000000000000000000000000000000000000004",
+        "buyerNonce": "",
+        "inputHash": "a04e62604bb67a7e1dc06926a0d6d040fd8d60cc28b2cb5fb94afcfff5d7bcea",
+        "payByTime": "1789992600000",
+        "submitResultTime": "1789993800000",
+        "unlockTime": "1789994700000",
+        "externalDisputeUnlockTime": "1789995600000"
+      },
+      "referenceKey": "a401010327200621582017cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
+      "referenceSignature": "84582aa201276761646472657373581d6057e3bf9f93c01043ca3392b1b2c9e096032075888168cabb89aab9b5a166686173686564f458203b33aabb96cea60b86f35425717666b5a969584f738a856c0b0d8887c300858958405621924f2a50d0fa1fcc3517500019c16bf4a149c2288f6b813027bd9078dc8df9c36f7509e0d5c418f94e2d8cf79c04e5e8e209fbb1bb3f47bfc186ce167b0a",
+      "blockchainIdentifier": "030d7c6574d40b00e8100e381599026021b73c0119301d8036320d2e2b8cd4b58819898c0804d4e01814d1808c019804e618c031a16071c76468c8663e04fa63143bb0219d1be62199324ac8c763e7d910dc7c85f34d92a952c9481264fe9501e8b307e72af5a918b7362739a900a31a1c26032ba3a92db61690861c00933236321a10701f301b01b23118a3080e459a5729260102ba4e1a217000bd8098995a2bb3483d58a5209c3d9c1098a6260180a261b9491f1b10b031321b18aaf099445ea6869b1a189c0132309c372611588658d4b71a373239e68099b29f2317b12080f3b06517f01b0086c1c124045f091f0c05a81030f857188f8c4110a8f8477c00914046e189e8dc2390956a40d320548f59809b8056c70d41c0643c9ccf763bd380c1605b0d80027003e8005db800673e41000ee002f4159d48a2b51a00016006b51771c5001b4e800ad4542002d9b0006e0047601734d8280398003d48e2c5631860680039f22db2012ba0076cc515c02d4000"
+    }
+  },
+  "termsDigest": "3b33aabb96cea60b86f35425717666b5a969584f738a856c0b0d8887c3008589",
+  "verifies": true
+}

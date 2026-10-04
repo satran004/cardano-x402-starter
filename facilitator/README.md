@@ -1,0 +1,214 @@
+# Cardano x402 Facilitator
+
+An [x402](https://github.com/coinbase/x402) v2 facilitator for Cardano, in Java.
+
+x402 revives HTTP `402 Payment Required` as a real payment flow: a resource
+server quotes a price, a client pays, and the server serves. The **facilitator**
+is the piece that answers two questions on the server's behalf — *is this payment
+valid?* and *did it actually settle?* — so the resource server needs no chain
+integration of its own.
+
+This service implements the Cardano `exact` scheme of the x402 protocol.
+
+**The facilitator never holds keys and never signs.** It verifies transactions
+the payer already signed, and submits them. It cannot move funds on its own.
+
+## Status
+
+Compatibility target: `@x402/cardano` and `@x402/core` **2.26.0**, upstream
+[`x402-foundation/x402` main at `6323ec7`](https://github.com/x402-foundation/x402/tree/6323ec74c85607e706e0722dd294365a7fb57768).
+The upgrade includes TypeScript-generated signed vectors, a real HTTP SDK
+interoperability gate, and PostgreSQL migration/concurrency tests. See
+[testing](docs/testing.md) and [upgrade notes](docs/upstream-compatibility.md).
+
+An earlier version was proven on preprod. This upgrade's verification uses a
+controlled offline chain; it has not repeated that live proof or run on mainnet.
+The full self-hosted Compose stack is not exercised by these tests.
+
+## Features
+
+- **All three x402 Cardano transfer methods** — `default` (address-to-address),
+  `masumi` (`vested_pay` escrow, rules M1–M9), and `script` (arbitrary Plutus
+  locks with aiken UPLC parameter application).
+- **Facilitator submission** — the payer signs, the facilitator broadcasts once,
+  and retries reconcile durable evidence. Confirmation policy spans authenticated
+  acceptance (`-1`, operator opt-in), canonical inclusion (`0`), and depth (`1..20`).
+- **Pre-submit validation** — canonical payloads, input quantities, value
+  conservation, minimum fees and signatures, with an optional full phase-1
+  validator for transactions beyond ordinary transfers.
+- **One Blockfrost-compatible chain client** — point it at hosted Blockfrost or
+  a standalone yaci-store instance (your own cardano-node + yaci-store,
+  consumed over its Blockfrost-compatible API) — chosen per network via
+  `BLOCKFROST_BASE_URL`, same code path either way.
+- **Settlement that survives reality** — journalled in Postgres, fenced CAS
+  transitions, an asynchronous reconciler, and rollback detection. A tx that
+  lands after the HTTP response, or a process that dies mid-submit, resolves
+  correctly.
+- **Tri-state UTxO resolution** — the chain SPI models `Unspent` / `Spent` /
+  `Unknown`, so a lagging indexer can degrade to a retryable error rather than a
+  guess. The current backend is Blockfrost-compatible and resolves an absent
+  output straight to `Spent`, whether it's hosted Blockfrost or yaci-store.
+- **A structured error-code catalog** covering every verification and
+  settlement failure mode.
+- Java 21, Spring Boot 3.5, virtual threads, Log4j2, Prometheus metrics.
+
+## Quickstart
+
+Requires Java 21 and a PostgreSQL. With Docker:
+
+```bash
+cd deploy
+test -e .env || cp .env.example .env
+# Set BLOCKFROST_PROJECT_ID in .env; optionally override the local DB password.
+docker compose --profile light up -d --build
+```
+
+Compose uses the official PostgreSQL image with a single `postgres` user and
+`POSTGRES_ADMIN_PASSWORD` (local default `postgres`). Keep `deploy/.env`
+private; it is ignored by Git. An existing volume retains its stored password;
+follow the [existing-volume guidance](deploy/README.md#postgresql-and-existing-volumes)
+if the configured password differs.
+
+Or run it directly:
+
+```bash
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home
+BLOCKFROST_PROJECT_ID=preprod... ./gradlew bootRun
+```
+
+Check it's serving:
+
+```bash
+curl localhost:4022/supported
+# {"kinds":[{"x402Version":2,"scheme":"exact","network":"cardano:preprod",
+#            "extra":{"assetTransferMethods":["default","masumi","script"],
+#                     "l1Confirmations":{"minimum":0,"maximum":20}, ...}}], ...}
+```
+
+The `extra` block is the capability contract a resource server checks its
+policies against before serving a 402 — see [docs/api.md](docs/api.md#get-supported).
+
+Then prove it works against the real chain — build, sign, verify, settle, and
+independently confirm on-chain:
+
+```bash
+BLOCKFROST_PROJECT_ID=preprod... ./gradlew e2e
+```
+
+See [docs/testing.md](docs/testing.md) — including how to point it at your own
+wallet, which you should.
+
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/verify` | Is this signed payment valid? |
+| `POST` | `/settle` | Submit it and confirm it |
+| `GET` | `/supported` | Which (version, scheme, network) triples are served |
+| `GET` | `/health` | Human-facing summary |
+| `GET` | `/actuator/health`, `/actuator/prometheus` | Probes and metrics |
+
+```bash
+curl -X POST localhost:4022/verify -H 'Content-Type: application/json' -d '{
+  "x402Version": 2,
+  "paymentPayload": {
+    "x402Version": 2,
+    "resource": { "url": "https://example.test/report" },
+    "accepted": { "scheme": "exact", "network": "cardano:preprod",
+                  "asset": "lovelace", "amount": "1500000", "payTo": "addr_test1..." },
+    "payload": { "transaction": "<base64 signed tx CBOR>", "nonce": "<txHash>#0" }
+  },
+  "paymentRequirements": { "scheme": "exact", "network": "cardano:preprod",
+                           "asset": "lovelace", "amount": "1500000", "payTo": "addr_test1...",
+                           "maxTimeoutSeconds": 600,
+                           "extra": { "assetTransferMethod": "default" } }
+}'
+```
+
+Two things clients get wrong:
+
+- **A rejected payment is `200 OK`** with `isValid: false`. Read the body, not
+  the status.
+- **`settle` failing with `settlement_pending` and a
+  non-empty `transaction` does not mean the payment failed.** Broadcast may have occurred
+  and it may still land. Retry the same payment to reconcile that hash.
+
+Full contract and every error code: [docs/api.md](docs/api.md).
+
+## Configuration
+
+Everything lives under `x402` in `application.yml`. The minimum is one network
+with a backend:
+
+```yaml
+x402:
+  networks:
+    - id: "cardano:preprod"
+      chain:
+        blockfrost:
+          base-url: https://cardano-preprod.blockfrost.io/api/v0
+          project-id: ${BLOCKFROST_PROJECT_ID}
+```
+
+`x402.networks` is a list, so one process can serve several networks — each gets
+its own chain backend, scheme, settlement service and `/supported` entry. To keep
+them out of the image, point `NETWORKS_FILE` at an external file shaped like
+[docs/networks_example.yml](docs/networks_example.yml):
+
+```bash
+NETWORKS_FILE=file:/etc/x402/networks.yml java -jar facilitator.jar
+```
+
+It **replaces** the list in `application.yml` rather than adding to it, and the
+`file:` prefix is required — a bare path is silently ignored.
+
+The facilitator has no built-in HTTP authentication or rate limiting. Compose
+publishes its API on host loopback; protect any remote ingress separately.
+CORS remains opt-in. See [docs/configuration.md](docs/configuration.md).
+
+## Documentation
+
+| Doc | What's in it |
+|---|---|
+| [docs/api.md](docs/api.md) | Endpoints, request/response shapes, every error code |
+| [docs/verification.md](docs/verification.md) | What `/verify` checks, in order, and why |
+| [docs/architecture.md](docs/architecture.md) | Packages, chain SPI, settlement state machine, persistence |
+| [docs/configuration.md](docs/configuration.md) | Every property, defaults, and the ones that matter |
+| [docs/testing.md](docs/testing.md) | Unit suite and the on-chain E2E proof |
+| [deploy/README.md](deploy/README.md) | Docker Compose, Mithril sync, mainnet checklist |
+
+## Development
+
+```bash
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home
+
+./gradlew test        # Docker needed for the Postgres IT
+npm ci --prefix interop --ignore-scripts
+./gradlew interop     # published TypeScript SDKs against real Java HTTP
+./gradlew bootRun     # run locally
+./gradlew e2e         # on-chain proof; facilitator must be running
+```
+
+Stack: Java 21 · Spring Boot 3.5.16 · cardano-client-lib 0.7.2 ·
+aiken-java-binding 0.1.0 · PostgreSQL · Gradle 8.14. yaci-store runs as a
+standalone service (`bloxbean/yaci-store:2.0.2` in `deploy/docker-compose.yml`),
+not a facilitator dependency.
+
+Before changing chain code, read the "Chain access layer" section of
+[docs/architecture.md](docs/architecture.md) — the tri-state `UtxoState` SPI
+contract, and how hosted Blockfrost and a standalone yaci-store both resolve to
+the same `BlockfrostChainService` HTTP client, are worth understanding before
+touching it.
+
+## Security
+
+- The facilitator holds **no keys** and signs nothing.
+- `/verify` and `/settle` do not authenticate callers. Compose publishes the
+  facilitator on host loopback; direct JAR launches use Spring Boot's listener
+  setting. Use a protected TLS ingress if the API is remotely reachable.
+- The `masumi` escrow address is **derived** from the deployment parameters and
+  `payTo` must equal it, so a hostile address fails regardless of configuration.
+  The script-hash allowlist narrows that further to deployments you nominate, and
+  is inactive until configured — set it before mainnet.
+- The E2E test requires externally supplied preprod credentials. Rotate the
+  values exposed in earlier source history before using that environment again.

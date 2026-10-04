@@ -1,0 +1,271 @@
+# Architecture
+
+A single Spring Boot service. Two things make the shape non-obvious and are worth
+reading before changing anything: the **chain backend is one Blockfrost client
+whose target is configurable** (hosted Blockfrost, or a standalone yaci-store
+instance consumed over its Blockfrost-compatible API, chosen per network via
+`base-url`), and **settlement is a journalled state machine**, not a
+request-scoped operation.
+
+## Package layout
+
+```
+org.cardanofoundation.x402.facilitator
+├── FacilitatorApplication          Spring Boot entry point (package root)
+├── controller/                     HTTP surface — /verify, /settle, /supported, /health
+│   └── advice/                     Sanitized error surface
+├── model/
+│   ├── protocol/                   x402 wire DTOs (records) + ProtocolJson
+│   ├── chain/                      Chain SPI value types (UtxoState, SubmissionResult, …)
+│   ├── entity/                     SettlementRecord + Status
+│   └── ErrorCodes                  The facilitator's error-code catalogue
+├── service/
+│   ├── registry/                   (version, scheme, network) -> handler dispatch
+│   ├── verification/               ExactCardanoScheme (stages A–E)
+│   │   ├── decoder/                CBOR -> DecodedTransaction
+│   │   └── method/                 default | masumi | script verifiers
+│   └── settlement/                 Service, gate, reconciler, digest
+├── chain/                          Chain SPI + blockfrost/ impl (also serves yaci-store)
+├── repository/                     SettlementRepository (JDBC, CAS transitions)
+└── config/                         Properties, filters, wiring, startup validation
+```
+
+`model` / `service` / `controller` carry the required layering; `chain`,
+`repository`, and `config` are additional packages for the SPI, persistence, and
+wiring.
+
+## Request flow
+
+```
+POST /verify or /settle
+  → CorrelationIdFilter      HIGHEST_PRECEDENCE      X-Correlation-Id (generated if absent)
+  → RequestSizeFilter        (unordered ⇒ last)      byte cap → 413
+  → FacilitatorController    null checks; registry lookup
+  → X402FacilitatorRegistry  (2, "exact", normalize(network)) → handler
+  → DefaultSchemeNetworkFacilitator
+      ├── verify → ExactCardanoScheme      stages A–E
+      └── settle → SettlementGate → SettlementService
+```
+
+Correlation runs first so every rejection downstream is traceable.
+`RequestSizeFilter` enforces the byte cap before controller parsing. The
+facilitator has no application-level API authentication or rate limiter;
+Compose publishes its API on host loopback.
+
+The registry keys on `(scheme, normalized network)` and rejects any
+`x402Version != 2` outright. An unregistered triple returns HTTP 500
+(see [api.md](api.md)).
+
+`DefaultSchemeNetworkFacilitator` delegates through injected `BiFunction`s rather
+than depending on the verification and settlement services directly. That keeps
+the dependency graph acyclic — settlement itself needs the verifier, which would
+otherwise form a cycle.
+
+## Chain access layer
+
+Everything chain-facing sits behind an SPI, so verification and settlement never
+know which backend they're on:
+
+| Type | Purpose |
+|---|---|
+| `FacilitatorChainService` | UTxO state, current slot, submit, inclusion, health |
+| `ProtocolParamsProvider` | min-UTxO coefficient, max tx size, minimum fee coefficient and constant |
+| `NetworkClock` | slot ↔ POSIX time (Masumi deadlines) |
+
+### `UtxoState` is tri-state
+
+`Unspent` | `Spent` | `Unknown`. The third is load-bearing: an indexer behind the
+tip cannot tell "never existed" from "not yet indexed". Both collapses are real
+bugs — into `Spent` rejects honest payments, into `Unspent` accepts replays. So
+`Unknown` degrades to a retryable `chain_lookup_failed`. Same rule for
+`SubmissionResult.Unknown`: a submission that *might* have been broadcast never
+releases the claim.
+
+`Unspent` carries the owner plus lovelace and native-asset quantities. Fresh
+verification requires these quantities to check conservation. `Spent` retains the
+historical owner where available, so a proven broadcast can be authenticated
+without pretending its consumed input is still unspent. New-format journal rows
+also retain the payer established before submission.
+
+### `InclusionResult` is the evidence ladder
+
+`NotSeen` | `Mempool` | `Included(depth, …)`, matching the spec's
+`l1Confirmations` levels of `-1`, `0` and `n`. **`depth` counts blocks *newer*
+than the containing block**, so a transaction in the tip has depth `0` —
+"canonical inclusion" — not `1`. `Mempool` comes from Blockfrost's
+`/mempool/{hash}`, which the backend interface does not expose, so it goes over
+raw HTTP; a provider fault answers "not pending" rather than throwing, since
+mempool presence only ever strengthens evidence.
+
+### The chain backend
+
+There is exactly one backend: the cardano-client-lib Blockfrost provider
+(`BFBackendService`, wrapped in `BlockfrostChainService`). `ChainBackendFactory`
+builds it from a single property per network, `chain.blockfrost.base-url` (env
+`BLOCKFROST_BASE_URL`), plus `chain.blockfrost.project-id` (env
+`BLOCKFROST_PROJECT_ID`). There is no "chain mode" concept — no Spring profile,
+no alternate code path.
+
+Because yaci-store exposes a Blockfrost-compatible API, the same client serves
+a standalone yaci-store just as well as hosted Blockfrost — `base-url` just
+points at a different host:
+
+| | Hosted Blockfrost | Standalone yaci-store |
+|---|---|---|
+| `base-url` | Blockfrost's hosted API (default) | e.g. `http://yaci-store:8080/api/v1/blockfrost` |
+| `project-id` | required | ignored |
+| Infra | none beyond a project id | a `yaci-store` deployment (its own cardano-node sync + Postgres) |
+| Submission | Blockfrost `tx/submit` | yaci-store's `/tx/submit`, forwarded to its node |
+
+The facilitator does not embed an indexer, a JPA store, or any yaci-store
+library code; when yaci-store is used it runs as its own service (see
+[../deploy/README.md](../deploy/README.md)) and is addressed over HTTP,
+identically to Blockfrost.
+
+Because both targets share `BlockfrostChainService`, both inherit its
+`404 → Spent` semantics (see "`UtxoState` is tri-state" above). Neither
+resolution produces `UtxoState.Unknown` today — it remains part of the SPI
+contract for a future backend that can distinguish "not yet indexed" from
+"never existed", but nothing currently returns it. `SubmissionResult.Unknown`
+is unaffected: a transport failure after the wire still returns it either way,
+since the node may have accepted the submission regardless.
+
+---
+
+## Settlement
+
+Settlement can't be request-scoped: a tx may land after the HTTP response, the
+process may die mid-submit, and a confirmed block may roll back. So state is
+journalled in Postgres and swept asynchronously.
+
+### State and claims
+
+A fresh payment is verified, then atomically claims its transaction hash and,
+for Masumi, seller-signed terms digest in the same database row. `SUBMITTING` is
+persisted before any wire I/O. Every ownership transition is fenced by attempt
+ID and expected status.
+
+| Status | Meaning |
+|---|---|
+| `CLAIMED` | Reserved; a new-format local row proves no submission yet |
+| `SUBMITTING` | May have reached the provider; uncertainty retains the claim |
+| `SUBMITTED` | Locally submitted and accepted, or observed after rollback |
+| `NOT_CONFIRMED` | Confirmation threshold not yet reached |
+| `CONFIRMED` | Evidence reached the persisted per-request threshold |
+| `FAILED` | Definitive rejection tombstone for new-format rows |
+| `EXPIRED` | NotSeen beyond transaction TTL plus 120-slot grace; never eligible for rebroadcast |
+
+A proven `NotSubmitted` outcome releases both claims atomically. A definitive
+rejection retains both. Timeout, transport uncertainty, process death after
+`SUBMITTING`, expiry, and rollback never release a possibly broadcast claim.
+Only a stale new-format local `CLAIMED` row can be reclaimed.
+
+### Retry and confirmation policy
+
+The normalized requirements and resource URL bind the transaction to one payment.
+Every matching retry authenticates the payload and method again, while skipping
+pre-broadcast-only checks when durable provenance or independent canonical
+evidence permits it. It checks current evidence even for a previously confirmed
+payment; it never returns a cached success merely because an old request passed.
+
+`confirmationPolicy.l1Confirmations` selects `-1..20`, defaulting to `1`.
+Confirmation depth is persisted, so the reconciler cannot promote a payment using
+a weaker process default. Observed confirmations are returned to callers.
+Unresolved outcomes return `settlement_pending` with the original hash, allowing
+upstream core's one automatic retry. The resource server separately owns
+business-operation consumption and its own durable Masumi quote store.
+
+### Existing V1 rows
+
+V2 adds policy, provenance, acceptance and terms-digest columns without changing
+V1. Historical rows have unknown policy, `LEGACY` provenance and no assumed
+acceptance: old `SUBMITTED` records may have originated in the removed client
+mode. The reconciler cannot invent missing policy. A matching, fully validated
+retry can bind it, but only current canonical evidence can establish success.
+Legacy `FAILED` and `EXPIRED` rows are not automatically reclaimed. No V1 status
+or response JSON grants permission to rebroadcast or return cached success.
+
+### Reconciler
+
+`@Scheduled(fixedDelay = 30s, initialDelay = 30s)` sweeps up to 200 rows that are
+`SUBMITTING`/`SUBMITTED`/`NOT_CONFIRMED`, plus `CONFIRMED` rows still inside the
+stability window (rollback watch).
+
+On Postgres it takes a `pg_try_advisory_lock`, so **only one instance sweeps** —
+horizontal scaling is safe. On other vendors (H2 in tests) it runs unlocked.
+
+A `ChainLookupException` **skips** the row and preserves its state. Errors are
+never treated as absence — that's what would turn a Blockfrost blip into a
+wrongly-`EXPIRED` payment.
+
+### Settlement gate
+
+Fresh `POST /settle` calls return **503** when the network backend is unhealthy.
+A retry with an existing transaction row bypasses only this health precheck and
+reaches journal reconciliation, which can return protocol pending without a new
+submission. The stored binding and full retry authentication still apply.
+
+---
+
+## Persistence
+
+One table, `facilitator.settlement`, keyed by `tx_hash`:
+
+| Column | Type | Notes |
+|---|---|---|
+| `tx_hash` | `varchar(64)` | **PK** — the idempotency arbiter |
+| `attempt_id` | `uuid` | NOT NULL — the CAS fence |
+| `requirements_digest` | `varchar(64)` | NOT NULL — SHA-256 |
+| `network`, `status` | `varchar(64)`, `varchar(16)` | NOT NULL |
+| `payer`, `pay_to`, `asset`, `amount` | | nullable |
+| `transfer_method`, `nonce_outref`, `tx_ttl_slot` | | nullable |
+| `claimed_at` | `timestamptz` | NOT NULL |
+| `submitted_at`, `confirmed_at`, `confirmed_slot`, `confirmed_block` | | nullable |
+| `error_reason`, `response_json` | | nullable |
+| `selected_confirmations` | `integer` | nullable only for historical policy; -1..20 |
+| `submission_provenance` | `varchar(16)` | `LEGACY` or `LOCAL` |
+| `submission_accepted` | `boolean` | authenticated local provider acceptance |
+| `terms_digest` | `varchar(64)` | unique when present; atomic Masumi quote claim |
+
+Index `idx_settlement_status_claimed (status, claimed_at)` serves the reconciler
+sweep and staleness queries.
+
+Migrations run programmatically (`spring.flyway.enabled: false`):
+`FlywayConfig.facilitatorFlyway` applies `classpath:db/migration` into the
+`facilitator` schema with its own history table. That's the only Flyway runner
+in the facilitator process — yaci-store, when used, runs as a separate service
+and migrates its own schema independently, so the two never share a history
+table or interfere.
+
+## Startup validation
+
+Fails fast rather than surfacing misconfiguration as runtime errors:
+
+- `x402.networks` non-empty
+- every network id supported (`cardano:mainnet|preprod|preview`, CIP-34 aliases ok)
+- every network declares `chain.blockfrost.base-url`
+
+## Cross-cutting
+
+| Concern | Mechanism |
+|---|---|
+| Logging | Log4j2 (`log4j2-spring.xml`), JSON layout available; `%X{correlationId}` |
+| Metrics | Micrometer → `/actuator/prometheus` |
+| Correlation | `X-Correlation-Id` generated/echoed/logged; `500` bodies carry it and nothing else |
+| Concurrency | Virtual threads (`spring.threads.virtual.enabled: true`) |
+| JSON bounds | `StreamReadConstraints` under the byte cap (defence in depth) |
+
+## Related
+
+- [api.md](api.md) — wire contract and error codes
+- [verification.md](verification.md) — the A–E rules in detail
+- [configuration.md](configuration.md) — every property
+- [../deploy/README.md](../deploy/README.md) — deployment, Compose, mainnet checklist
+
+### Reconciliation fairness
+
+Sweeps use a bounded 200-row keyset page ordered by claim time and transaction hash.
+The per-instance cursor advances even when observations fail or remain uncertain,
+then wraps after the last eligible row. A restart resets the cursor; an advisory-lock
+miss does not. Unknown or TTL-less records are preserved rather than expired to free
+queue capacity. No database migration is required for this scheduling change.

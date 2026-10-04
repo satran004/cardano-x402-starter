@@ -1,0 +1,84 @@
+package org.cardanofoundation.x402.facilitator.model;
+
+/**
+ * Error codes returned by the exact-cardano scheme, plus two codes specific
+ * to this facilitator (script datum, payer witness).
+ */
+public final class ErrorCodes {
+
+    public static final String UNSUPPORTED_SCHEME = "unsupported_scheme";
+    public static final String INVALID_PAYLOAD = "invalid_exact_cardano_payload";
+    public static final String REQUIREMENTS_INVALID = "invalid_exact_cardano_requirements";
+    public static final String UNSUPPORTED_VERSION = INVALID_PAYLOAD + "_unsupported_version";
+    public static final String NETWORK_MISMATCH = "network_mismatch";
+    public static final String DECODE_FAILED = INVALID_PAYLOAD + "_transaction_decode_failed";
+    public static final String NETWORK_ID_MISMATCH = INVALID_PAYLOAD + "_network_id_mismatch";
+    public static final String UNSIGNED = INVALID_PAYLOAD + "_unsigned";
+    public static final String INVALID_SIGNATURE = INVALID_PAYLOAD + "_invalid_signature";
+    public static final String TTL_EXPIRED = INVALID_PAYLOAD + "_ttl_expired";
+    public static final String NOT_YET_VALID = INVALID_PAYLOAD + "_not_yet_valid";
+    public static final String TTL_TOO_FAR = INVALID_PAYLOAD + "_ttl_too_far";
+    public static final String NONCE_INVALID = INVALID_PAYLOAD + "_nonce_invalid";
+    public static final String NONCE_NOT_IN_INPUTS = INVALID_PAYLOAD + "_nonce_not_in_inputs";
+    public static final String NONCE_NOT_ON_CHAIN = INVALID_PAYLOAD + "_nonce_not_on_chain";
+    public static final String INPUT_NOT_AVAILABLE = INVALID_PAYLOAD + "_input_not_available";
+    public static final String RECIPIENT_MISMATCH = INVALID_PAYLOAD + "_recipient_mismatch";
+    public static final String ASSET_MISMATCH = INVALID_PAYLOAD + "_asset_mismatch";
+    public static final String AMOUNT_INSUFFICIENT = INVALID_PAYLOAD + "_amount_insufficient";
+    public static final String MIN_UTXO_INSUFFICIENT = INVALID_PAYLOAD + "_min_utxo_insufficient";
+    public static final String VERIFICATION_ERROR = INVALID_PAYLOAD + "_verification_error";
+    public static final String CHAIN_LOOKUP_FAILED = "exact_cardano_facilitator_chain_lookup_failed";
+    public static final String SETTLEMENT_FAILED = "exact_cardano_settlement_failed";
+    public static final String SETTLEMENT_NOT_CONFIRMED = "exact_cardano_settlement_not_confirmed";
+    public static final String DUPLICATE_SETTLEMENT = "duplicate_settlement";
+
+    public static final String PHASE1_INVALID = INVALID_PAYLOAD + "_phase1_invalid";
+    public static final String PHASE2_INVALID = INVALID_PAYLOAD + "_phase2_invalid";
+    public static final String VALUE_NOT_CONSERVED = INVALID_PAYLOAD + "_value_not_conserved";
+    public static final String FEE_BELOW_MINIMUM = INVALID_PAYLOAD + "_fee_below_minimum";
+    public static final String INPUT_VALUE_UNAVAILABLE = "exact_cardano_facilitator_input_value_unavailable";
+    public static final String SETTLEMENT_PENDING = "settlement_pending";
+    public static final String SETTLEMENT_DEFINITIVELY_REJECTED = "exact_cardano_settlement_definitively_rejected";
+    public static final String MASUMI_ESCROW_OUTPUT_COUNT = INVALID_PAYLOAD + "_masumi_escrow_output_count";
+    public static final String MASUMI_AGENT_IDENTIFIER = "invalid_exact_cardano_requirements_masumi_agent_identifier";
+    public static final String MASUMI_DEPLOYMENT = "invalid_exact_cardano_requirements_masumi_deployment";
+
+    // masumi assetTransferMethod
+    public static final String MASUMI_CONTRACT_MISMATCH = INVALID_PAYLOAD + "_masumi_contract_mismatch";
+    public static final String MASUMI_DATUM_MISSING = INVALID_PAYLOAD + "_masumi_datum_missing";
+    public static final String MASUMI_DATUM_INVALID = INVALID_PAYLOAD + "_masumi_datum_invalid";
+    public static final String MASUMI_DATUM_MISMATCH = INVALID_PAYLOAD + "_masumi_datum_mismatch";
+    public static final String MASUMI_DEADLINE = INVALID_PAYLOAD + "_masumi_deadline";
+    public static final String MASUMI_COLLATERAL = INVALID_PAYLOAD + "_masumi_collateral";
+    public static final String MASUMI_MIN_UTXO = INVALID_PAYLOAD + "_masumi_min_utxo";
+    public static final String MASUMI_REFERENCE_SCRIPT = INVALID_PAYLOAD + "_masumi_reference_script";
+    public static final String MASUMI_ASSET = INVALID_PAYLOAD + "_masumi_asset";
+    /** The request commitment does not recompute, or terms.inputHash disagrees with it. */
+    /** The Masumi extra block is not shaped as the spec requires. */
+    public static final String MASUMI_SCHEMA = "invalid_exact_cardano_requirements_masumi_schema";
+    /** extra carries a malformed submission or confirmation policy. */
+    public static final String REQUIREMENTS_POLICY = "invalid_exact_cardano_requirements_policy";
+    /** payload.submissionMode is not admitted by the declared submissionPolicy. */
+    public static final String SUBMISSION_MODE_MISMATCH = INVALID_PAYLOAD + "_submission_mode_mismatch";
+    /** The selected submission mode is not one this facilitator can honour. */
+    public static final String SUBMISSION_MODE_UNSUPPORTED = INVALID_PAYLOAD + "_submission_mode_unsupported";
+    /** Client submission claimed, but the chain has no record of the transaction. */
+    public static final String EVIDENCE_MISSING = INVALID_PAYLOAD + "_evidence_mismatch";
+    /** A client-submitted payment carries script witnesses and could land phase-2 invalid. */
+    public static final String CLIENT_SCRIPT_EXECUTION = INVALID_PAYLOAD + "_phase2_invalid";
+    /** blockchainIdentifier is unusable or names a different escrow. */
+    public static final String MASUMI_IDENTIFIER = "invalid_exact_cardano_requirements_masumi_identifier";
+    public static final String MASUMI_COMMITMENT = "invalid_exact_cardano_requirements_masumi_commitment";
+    /** The seller's CIP-8 authorization over termsDigest does not verify. */
+    public static final String MASUMI_AUTHORIZATION = "invalid_exact_cardano_requirements_masumi_seller_signature";
+
+    // script assetTransferMethod
+    public static final String SCRIPT_ADDRESS_MISMATCH = INVALID_PAYLOAD + "_script_address_mismatch";
+
+    // codes specific to this facilitator
+    public static final String SCRIPT_DATUM_MISSING = INVALID_PAYLOAD + "_script_datum_missing";
+    public static final String PAYER_NOT_WITNESS = INVALID_PAYLOAD + "_payer_not_witness";
+
+    private ErrorCodes() {
+    }
+}

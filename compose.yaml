@@ -1,0 +1,50 @@
+name: cardano-x402-demo
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_PASSWORD: local-demo-only
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  facilitator:
+    platform: linux/amd64
+    build: ./facilitator
+    environment:
+      BLOCKFROST_PROJECT_ID: ${BLOCKFROST_PROJECT_ID:?Set the preprod key in .env}
+      DB_URL: jdbc:postgresql://postgres:5432/postgres
+      DB_PASSWORD: local-demo-only
+    ports:
+      - 127.0.0.1:4022:4022
+    depends_on:
+      postgres:
+        condition: service_healthy
+  resource-server:
+    build: ./resource-server
+    environment:
+      BLOCKFROST_PROJECT_ID: ${BLOCKFROST_PROJECT_ID:?Set the preprod key in .env}
+      PAY_TO: ${PAY_TO:?Run the merchant setup script first}
+      PAYMENT_AMOUNT: ${PAYMENT_AMOUNT:-2000000}
+      FACILITATOR_URL: http://facilitator:4022
+      PUBLIC_RESOURCE_URL: http://localhost:8081
+      DB_URL: jdbc:postgresql://postgres:5432/postgres
+      DB_PASSWORD: local-demo-only
+    ports:
+      - 127.0.0.1:8081:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      facilitator:
+        condition: service_started
+  frontend:
+    build: ./frontend
+    ports:
+      - 127.0.0.1:5174:5173
+    depends_on:
+      - resource-server
+volumes:
+  postgres-data:

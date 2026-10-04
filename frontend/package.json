@@ -1,0 +1,30 @@
+{
+  "name": "cardano-x402-demo-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc -b && vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@x402/core": "2.26.0",
+    "@x402/cardano": "2.26.0",
+    "@cardano-foundation/cardano-connect-with-wallet": "0.2.22",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "styled-components": "6.3.12",
+    "@evolution-sdk/evolution": "0.5.16",
+    "buffer": "6.0.3",
+    "@cardano-foundation/cardano-connect-with-wallet-core": "0.2.12"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "typescript": "5.9.3",
+    "vite": "7.1.9",
+    "vitest": "3.2.4",
+    "@types/node": "22.18.6"
+  }
+}

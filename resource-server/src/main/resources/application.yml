@@ -1,0 +1,17 @@
+server:
+  port: 8080
+  max-http-request-header-size: 64KB
+spring:
+  threads.virtual.enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/postgres}
+    username: postgres
+    password: ${DB_PASSWORD:local-demo-only}
+  sql.init.mode: always
+demo:
+  pay-to: ${PAY_TO}
+  amount: ${PAYMENT_AMOUNT:2000000}
+  facilitator-url: ${FACILITATOR_URL:http://localhost:4022}
+  public-url: ${PUBLIC_RESOURCE_URL:http://localhost:8080}
+  blockfrost-key: ${BLOCKFROST_PROJECT_ID}
+  blockfrost-url: https://cardano-preprod.blockfrost.io/api/v0
