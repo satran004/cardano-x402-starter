@@ -1,0 +1,199 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2212%22 fill=%22%230e1925%22/%3E%3Ctext x=%2232%22 y=%2246%22 text-anchor=%22middle%22 font-size=%2246%22 fill=%22%23a6ecc6%22%3E%E2%82%B3%3C/text%3E%3C/svg%3E"><meta name="description" content="Learn x402 payments on Cardano with a Spring Boot or JavaScript resource server, browser wallet, and CF facilitator."><title>HTTP messages and encoding · Cardano x402 starter</title><style>body{margin:0;background:#0a111b;color:#d6e1e7;font:16px/1.75 system-ui,sans-serif}nav{padding:22px 6%;border-bottom:1px solid #294134;display:flex;gap:22px;font-size:13px;color:#a6ecc6}nav a:first-child{margin-right:auto;font-weight:700}main{max-width:920px;margin:auto;padding:48px 28px 80px}h1{font-size:42px;letter-spacing:-1.5px;line-height:1.15;color:#f1f6f4;margin:0 0 28px}h2{font-size:25px;letter-spacing:-.5px;color:#a6ecc6;margin:50px 0 14px}p{margin:18px 0}a{color:#a6ecc6;text-underline-offset:4px}strong{color:#eef7f2}img{width:100%;height:auto;margin:20px 0;border-radius:14px}code{background:#182838;color:#bcebcf;padding:2px 5px;border-radius:4px;font-size:13px;overflow-wrap:anywhere}pre{background:#101c29;border:1px solid #314756;border-radius:10px;padding:22px;overflow:auto;font-size:13px;line-height:1.6}pre code{background:transparent;padding:0;overflow-wrap:normal}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid #314756;padding:13px;text-align:left;vertical-align:top}th{background:#172c27;color:#a6ecc6}.table-wrap{overflow:auto;margin:24px 0}li{margin:12px 0;padding-left:4px}footer{border-top:1px solid #314756;margin-top:50px;padding-top:20px;font-size:12px;color:#8ca0b2}@media(max-width:600px){h1{font-size:32px}main{padding:30px 18px}nav{padding:18px;font-size:11px;gap:12px}}*{box-sizing:border-box}body{font-size:16px}nav{flex-wrap:wrap;align-items:center}nav a{text-decoration:none}nav a[aria-current=page]{color:#f1f6f4;text-decoration:underline}nav .brand{font-size:16px}nav .repository{margin-left:auto}main{width:100%;min-width:0;padding:40px 24px 72px;margin:0}h1{font-size:38px}h3{color:#d7f2e4;margin-top:32px}.layout{max-width:1260px;margin:auto;display:grid;grid-template-columns:240px minmax(0,920px);gap:36px;padding:0 28px}.contents{position:sticky;top:24px;align-self:start;max-height:85vh;overflow:auto;padding:40px 8px;font-size:13px}.contents summary{color:#9ab5c3;font-weight:600;margin-bottom:16px}.contents ul{list-style:none;padding:0;margin:0}.contents li{padding:0;margin:12px 0;line-height:1.5}.contents a{color:#a8bec9;text-decoration:none}.contents a:hover{color:#a6ecc6}.skip-link{position:absolute;left:16px;top:-80px;padding:10px;background:#182838;z-index:1}.skip-link:focus{top:12px}h2,h3{scroll-margin-top:24px}footer a{margin-right:18px}code{font-family:ui-monospace,monospace}@media(max-width:900px){.layout{grid-template-columns:1fr;gap:0;padding:0 16px}.contents{position:static;max-height:none;padding:22px 24px 0}.contents ul{display:flex;flex-wrap:wrap;gap:10px 18px}.contents li{margin:0}.contents a{font-size:12px}main{padding-top:28px}}@media(max-width:600px){nav{gap:14px;padding:18px 20px}nav .brand{width:100%;margin:0}nav .repository{margin-left:0}main{padding:28px 8px 64px}h1{font-size:32px}.contents{padding:20px 8px 0}th,td{padding:10px}}</style></head><body><a class="skip-link" href="#content">Skip to content</a><nav aria-label="Documentation"><a class="brand" href="docs.html">Cardano x402 starter</a><a href="tutorial.html">Tutorial</a><a href="wire-format.html" aria-current="page">HTTP messages</a><a href="javascript.html">JavaScript</a><a href="architecture.html">Architecture</a><a href="validation.html">Validation</a><a class="repository" href="https://github.com/satran004/cardano-x402-starter">GitHub ↗</a><a href="/">Local demo ↗</a></nav><div class="layout"><aside class="contents" aria-label="Page contents"><details open><summary>On this page</summary><ul><li><a href="#what-travels-in-a-header-versus-a-body">What travels in a header versus a body</a></li><li><a href="#0-create-the-question-record">0 Create the question record</a></li><li><a href="#1-the-resource-server-returns-402">1 The resource server returns 402</a></li><li><a href="#2-the-wallet-signs-and-the-browser-retries">2 The wallet signs and the browser retries</a></li><li><a href="#3-the-server-verifies-and-settles-using-plain-json">3 The server verifies and settles using plain JSON</a></li><li><a href="#4-pending-and-successful-resource-responses">4 Pending and successful resource responses</a></li><li><a href="#5-decode-the-bytes-yourself">5 Decode the bytes yourself</a></li><li><a href="#6-rejections-and-recovery-data">6 Rejections and recovery data</a></li><li><a href="#where-this-is-implemented">Where this is implemented</a></li></ul></details></aside><main id="content"><h1 id="http-messages-and-encoding">HTTP messages and encoding</h1>
+<p>Follow the actual data exchanged by this starter, from an unpaid request to a paid answer. Both resource servers expose this flow on port 8081. The JSON below is illustrative: <code>{quoteId}</code>, <code>addr_test1...</code>, <code>{txHash}</code>, and <code>&lt;base64 signed CBOR&gt;</code> stand for runtime values, not a payment you can submit. Object key order and whitespace can differ without changing the decoded meaning.</p>
+<p><img src="images/http-messages.svg" alt="HTTP messages showing plain JSON bodies and Base64 JSON payment headers"/></p>
+<p><a href="images/http-messages.svg">Open the message illustration at full size</a>. The <a href="tutorial.html">tutorial</a> explains how to run the example and approve the wallet payment.</p>
+<h2 id="what-travels-in-a-header-versus-a-body">What travels in a header versus a body</h2>
+<div class="table-wrap"><table><thead><tr><th>Exchange</th><th>HTTP header</th><th>Decoded header object</th><th>HTTP body in this starter</th></tr></thead><tbody><tr><td>Unpaid resource response: 402</td><td>PAYMENT-REQUIRED</td><td>PaymentRequired: x402Version, resource, accepts</td><td>The same challenge as ordinary JSON. No answer.</td></tr><tr><td>Paid retry: GET</td><td>PAYMENT-SIGNATURE</td><td>PaymentPayload: x402Version, resource, accepted, payload</td><td>No request body.</td></tr><tr><td>Pending response: 202</td><td>PAYMENT-RESPONSE</td><td>SettlementResponse with success false and errorReason settlement_pending</td><td>error, settlement, and retry instruction as ordinary JSON. No answer.</td></tr><tr><td>Paid resource response: 200</td><td>PAYMENT-RESPONSE</td><td>SettlementResponse with success true and transaction ID</td><td>result and settlement as ordinary JSON.</td></tr><tr><td>Server calls facilitator: POST /verify or /settle</td><td>Content-Type: application/json</td><td>No x402 payment header is needed for these facilitator calls.</td><td>x402Version, paymentPayload, paymentRequirements as ordinary JSON.</td></tr></tbody></table></div>
+<p>The three payment header names and their Base64 JSON envelopes come from the <a href="https://github.com/x402-foundation/x402/blob/6323ec74c85607e706e0722dd294365a7fb57768/specs/transports-v2/http.md">x402 v2 HTTP transport</a>. Response bodies are chosen by the application. The 202 response, duplicated challenge/receipt bodies, and quote creation endpoint are demo conventions. Cardano&#x27;s transaction, nonce, transfer method, and confirmation evidence follow the <a href="https://github.com/x402-foundation/x402/blob/6323ec74c85607e706e0722dd294365a7fb57768/specs/schemes/exact/scheme_exact_cardano.md">Cardano exact mechanism</a>.</p>
+<h2 id="0-create-the-question-record">0 Create the question record</h2>
+<p>This free endpoint belongs to the demo, not to x402. It stores the question and payment terms, checks facilitator capabilities, and gives the browser a resource URL.</p>
+<pre><code>POST /api/quotes HTTP/1.1
+Host: localhost:8081
+Content-Type: application/json
+
+{&quot;question&quot;:&quot;What is a UTxO?&quot;}</code></pre>
+<pre><code>HTTP/1.1 200 OK
+Content-Type: application/json
+
+{&quot;id&quot;:&quot;{quoteId}&quot;,&quot;url&quot;:&quot;http://localhost:8081/api/answers/{quoteId}&quot;,&quot;expiresAt&quot;:1791190200000}</code></pre>
+<p><code>expiresAt</code> is the demo&#x27;s absolute expiry time in milliseconds since the Unix epoch. The server generates it as now plus 600 seconds. It is not a field in the standard PaymentRequired envelope.</p>
+<h2 id="1-the-resource-server-returns-402">1 The resource server returns 402</h2>
+<pre><code>GET /api/answers/{quoteId} HTTP/1.1
+Host: localhost:8081</code></pre>
+<pre><code>HTTP/1.1 402 Payment Required
+Content-Type: application/json
+PAYMENT-REQUIRED: &lt;Base64 of the UTF-8 JSON challenge below&gt;</code></pre>
+<p>The header decodes to this object. For the initial unpaid request, this starter also puts the object directly in the JSON response body:</p>
+<pre><code>{
+  &quot;x402Version&quot;: 2,
+  &quot;resource&quot;: {
+    &quot;url&quot;: &quot;http://localhost:8081/api/answers/{quoteId}&quot;,
+    &quot;description&quot;: &quot;A short educational Cardano answer&quot;,
+    &quot;mimeType&quot;: &quot;application/json&quot;
+  },
+  &quot;accepts&quot;: [
+    {
+      &quot;scheme&quot;: &quot;exact&quot;,
+      &quot;network&quot;: &quot;cardano:preprod&quot;,
+      &quot;asset&quot;: &quot;lovelace&quot;,
+      &quot;amount&quot;: &quot;2000000&quot;,
+      &quot;payTo&quot;: &quot;addr_test1...&quot;,
+      &quot;maxTimeoutSeconds&quot;: 600,
+      &quot;extra&quot;: {
+        &quot;assetTransferMethod&quot;: &quot;default&quot;,
+        &quot;areFeesSponsored&quot;: false,
+        &quot;confirmationPolicy&quot;: { &quot;l1Confirmations&quot;: 1 }
+      }
+    }
+  ]
+}</code></pre>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>What the browser learns</th></tr></thead><tbody><tr><td>x402Version</td><td>Interpret the envelope as x402 v2.</td></tr><tr><td>resource</td><td>Which URL the payment buys, its description, and the response media type.</td></tr><tr><td>accepts</td><td>Available payment options. This starter offers exactly one.</td></tr><tr><td>scheme</td><td>exact: pay the quoted quantity using the Cardano exact mechanism.</td></tr><tr><td>network</td><td>Use Cardano preprod, not a different chain or testnet.</td></tr><tr><td>asset</td><td>lovelace, Cardano&#x27;s smallest ADA unit.</td></tr><tr><td>amount</td><td>Integer string in asset base units: 2000000 lovelace is 2 tADA.</td></tr><tr><td>payTo</td><td>Merchant receiving address; it is a public payment destination.</td></tr><tr><td>maxTimeoutSeconds</td><td>Payment time budget; this demo also stores a 10-minute quote expiry.</td></tr><tr><td>extra.assetTransferMethod</td><td>default means a direct transfer to the merchant address.</td></tr><tr><td>extra.areFeesSponsored</td><td>false: the payer funds the network fee in addition to the price.</td></tr><tr><td>extra.confirmationPolicy</td><td>Require block inclusion and at least one newer block in this demo.</td></tr></tbody></table></div>
+<p>No transaction has been built or submitted. <code>accepts</code> contains payment terms, not the requested answer.</p>
+<h2 id="2-the-wallet-signs-and-the-browser-retries">2 The wallet signs and the browser retries</h2>
+<p>The browser selects one option from <code>accepts</code>, builds a transaction using wallet UTxOs, and requests a CIP-30 signature. CIP-30 signing returns witnesses; the adapter assembles the full signed transaction with its body and witness set. It encodes those CBOR bytes as Base64 in <code>payload.transaction</code>. The browser does not broadcast it.</p>
+<p>The retry carries one outer Base64 JSON header and no request body:</p>
+<pre><code>GET /api/answers/{quoteId} HTTP/1.1
+Host: localhost:8081
+PAYMENT-SIGNATURE: &lt;Base64 of the UTF-8 payment JSON below&gt;</code></pre>
+<pre><code>{
+  &quot;x402Version&quot;: 2,
+  &quot;resource&quot;: {
+    &quot;url&quot;: &quot;http://localhost:8081/api/answers/{quoteId}&quot;,
+    &quot;description&quot;: &quot;A short educational Cardano answer&quot;,
+    &quot;mimeType&quot;: &quot;application/json&quot;
+  },
+  &quot;accepted&quot;: {
+    &quot;scheme&quot;: &quot;exact&quot;,
+    &quot;network&quot;: &quot;cardano:preprod&quot;,
+    &quot;asset&quot;: &quot;lovelace&quot;,
+    &quot;amount&quot;: &quot;2000000&quot;,
+    &quot;payTo&quot;: &quot;addr_test1...&quot;,
+    &quot;maxTimeoutSeconds&quot;: 600,
+    &quot;extra&quot;: {
+      &quot;assetTransferMethod&quot;: &quot;default&quot;,
+      &quot;areFeesSponsored&quot;: false,
+      &quot;confirmationPolicy&quot;: { &quot;l1Confirmations&quot;: 1 }
+    }
+  },
+  &quot;payload&quot;: {
+    &quot;transaction&quot;: &quot;&lt;base64 signed CBOR&gt;&quot;,
+    &quot;nonce&quot;: &quot;{previousTxHash}#0&quot;
+  }
+}</code></pre>
+<p><code>accepted</code> is the selected requirements object, not the whole <code>accepts</code> array. The resource server compares it to its stored quote and checks the resource URL. The nonce names one transaction input using its previous transaction hash and output index; it is not a random token or the new payment&#x27;s transaction ID. The facilitator checks that the nonce input is consumed and authorized.</p>
+<p>Despite the name PAYMENT-SIGNATURE, the header carries a complete payment envelope. The actual Cardano signatures are in the transaction&#x27;s CBOR witness set. It contains no wallet mnemonic or private key.</p>
+<h2 id="3-the-server-verifies-and-settles-using-plain-json">3 The server verifies and settles using plain JSON</h2>
+<p>The resource server decodes the header and sends a JSON request to the facilitator. The complete objects shown above replace the placeholders here:</p>
+<pre><code>const facilitatorRequest = {
+  x402Version: 2,
+  paymentPayload: decodedPaymentSignature,
+  paymentRequirements: storedQuoteRequirements
+};
+// POST /verify, then POST /settle, each with Content-Type: application/json
+// Body: JSON.stringify(facilitatorRequest)</code></pre>
+<p>The facilitator HTTP API uses ordinary JSON. The server does not forward the outer Base64 header string as its request body. The inner <code>paymentPayload.payload.transaction</code> stays Base64 CBOR because JSON cannot directly carry binary transaction bytes.</p>
+<p>The facilitator omits null fields from its JSON. A successful <code>/verify</code> response looks like:</p>
+<pre><code>{&quot;isValid&quot;:true,&quot;payer&quot;:&quot;addr_test1...&quot;}</code></pre>
+<p>Verification checks the signed transaction against the requirements and current chain state. It does not submit the transaction. HTTP 200 is the facilitator API&#x27;s response status; the resource server must still inspect <code>isValid</code>. After a valid verdict, it durably binds the canonical Cardano transaction ID to this question before calling <code>/settle</code> with the same payment and requirements.</p>
+<p><code>/settle</code> is the submission and observation step. A pending response looks like:</p>
+<pre><code>{
+  &quot;success&quot;: false,
+  &quot;errorReason&quot;: &quot;settlement_pending&quot;,
+  &quot;payer&quot;: &quot;addr_test1...&quot;,
+  &quot;transaction&quot;: &quot;{txHash}&quot;,
+  &quot;network&quot;: &quot;cardano:preprod&quot;,
+  &quot;extra&quot;: { &quot;status&quot;: &quot;pending&quot;, &quot;transactionId&quot;: &quot;{txHash}&quot; }
+}</code></pre>
+<p>The facilitator can add <code>extra.confirmations</code> when it has inclusion evidence; -1 means mempool-only observation and 0 means included with no newer block. A successful response is shown in the next step. The <code>extra</code> evidence is Cardano-specific; <code>success</code>, <code>transaction</code>, and <code>network</code> are part of the shared settlement envelope. The transaction ID is a 64-character hexadecimal hash of the transaction body, not Base64 and not a hash of the entire PAYMENT-SIGNATURE header.</p>
+<h2 id="4-pending-and-successful-resource-responses">4 Pending and successful resource responses</h2>
+<p>If settlement is still pending, the resource server returns:</p>
+<pre><code>HTTP/1.1 202 Accepted
+Content-Type: application/json
+PAYMENT-RESPONSE: &lt;Base64 of the pending settlement JSON above&gt;
+
+{&quot;error&quot;:&quot;settlement_pending&quot;,&quot;settlement&quot;:{...},&quot;instruction&quot;:&quot;Retry the identical PAYMENT-SIGNATURE; do not sign another transaction.&quot;}</code></pre>
+<p><code>{...}</code> abbreviates the full pending settlement object. This body is an application response, and 202 is this starter&#x27;s recovery convention. The browser retains its signed payment and repeats the same GET with the identical PAYMENT-SIGNATURE; it does not build another payment.</p>
+<p>Once the required evidence exists, the server returns:</p>
+<pre><code>HTTP/1.1 200 OK
+Content-Type: application/json
+PAYMENT-RESPONSE: &lt;Base64 of the successful settlement JSON below&gt;</code></pre>
+<p>Decoded PAYMENT-RESPONSE:</p>
+<pre><code>{
+  &quot;success&quot;: true,
+  &quot;payer&quot;: &quot;addr_test1...&quot;,
+  &quot;transaction&quot;: &quot;{txHash}&quot;,
+  &quot;network&quot;: &quot;cardano:preprod&quot;,
+  &quot;extra&quot;: {
+    &quot;status&quot;: &quot;confirmed&quot;,
+    &quot;transactionId&quot;: &quot;{txHash}&quot;,
+    &quot;confirmations&quot;: 1
+  }
+}</code></pre>
+<p>The body is ordinary JSON with the purchased resource and a copy of that receipt:</p>
+<pre><code>{
+  &quot;result&quot;: {
+    &quot;question&quot;: &quot;What is a UTxO?&quot;,
+    &quot;answer&quot;: &quot;A UTxO is an unspent transaction output: a piece of value controlled by an address. A Cardano payment consumes existing UTxOs and creates new outputs for the merchant and your change. The x402 nonce identifies one consumed input.&quot;,
+    &quot;generatedAt&quot;: &quot;2026-10-05T10:00:00Z&quot;,
+    &quot;source&quot;: &quot;Local educational examples; no external AI service&quot;
+  },
+  &quot;settlement&quot;: {
+    &quot;success&quot;: true,
+    &quot;payer&quot;: &quot;addr_test1...&quot;,
+    &quot;transaction&quot;: &quot;{txHash}&quot;,
+    &quot;network&quot;: &quot;cardano:preprod&quot;,
+    &quot;extra&quot;: {
+      &quot;status&quot;: &quot;confirmed&quot;,
+      &quot;transactionId&quot;: &quot;{txHash}&quot;,
+      &quot;confirmations&quot;: 1
+    }
+  }
+}</code></pre>
+<p>This answer text matches the Spring Boot example; JavaScript returns its own equivalent educational wording. The frontend reads <code>result.answer</code> for display and decodes the receipt for its protocol trace. The receipt records payment settlement, not the question&#x27;s answer. The whole response body is not Base64 encoded.</p>
+<h2 id="5-decode-the-bytes-yourself">5 Decode the bytes yourself</h2>
+<p>All three headers follow this outer transformation:</p>
+<pre><code>JSON object → JSON text → UTF-8 bytes → standard Base64 → HTTP header
+HTTP header → Base64 decode → UTF-8 text → JSON parse → JSON object</code></pre>
+<p>Cardano&#x27;s inner transaction has another transformation:</p>
+<pre><code>Signed Cardano transaction → CBOR bytes → Base64 → payload.transaction
+Decode PAYMENT-SIGNATURE first → parse JSON → decode payload.transaction → CBOR bytes</code></pre>
+<p>JSON and CBOR are serialization formats. Base64 is a text encoding, not encryption, compression, or a digital signature. The JSON envelope is readable by anyone who has the header. Changes to serialized JSON can change its Base64 spelling without changing its meaning; changes to transaction witnesses do not necessarily change the transaction body ID. A valid wallet signature and facilitator verification establish payment validity.</p>
+<p>In Node.js, a tiny independent example shows the exact transformation:</p>
+<pre><code>const example = { x402Version: 2 };
+const header = Buffer.from(JSON.stringify(example), &#x27;utf8&#x27;).toString(&#x27;base64&#x27;);
+console.log(header); // eyJ4NDAyVmVyc2lvbiI6Mn0=
+const decoded = JSON.parse(Buffer.from(header, &#x27;base64&#x27;).toString(&#x27;utf8&#x27;));
+console.log(decoded); // { x402Version: 2 }</code></pre>
+<p>For real payments, use the official library rather than this miniature example:</p>
+<pre><code>import {
+  decodePaymentRequiredHeader,
+  encodePaymentSignatureHeader,
+  decodePaymentResponseHeader
+} from &#x27;@x402/core/http&#x27;;
+
+const required = decodePaymentRequiredHeader(response402.headers.get(&#x27;PAYMENT-REQUIRED&#x27;));
+const signature = encodePaymentSignatureHeader(paymentPayload);
+const receipt = decodePaymentResponseHeader(response200.headers.get(&#x27;PAYMENT-RESPONSE&#x27;));</code></pre>
+<p>To inspect a real 402 without signing or spending, start the demo and run this with Node.js 22 or newer. It prints the exact Base64 header, the decoded JSON, and the plain JSON body:</p>
+<pre><code>const base = &#x27;http://localhost:8081&#x27;;
+const created = await fetch(`${base}/api/quotes`, {
+  method: &#x27;POST&#x27;,
+  headers: { &#x27;Content-Type&#x27;: &#x27;application/json&#x27; },
+  body: JSON.stringify({ question: &#x27;What is a UTxO?&#x27; })
+});
+if (!created.ok) throw new Error(`Quote creation failed: ${created.status}`);
+const quote = await created.json();
+const response = await fetch(`${base}/api/answers/${quote.id}`);
+if (response.status !== 402) throw new Error(`Expected 402, got ${response.status}`);
+const raw = response.headers.get(&#x27;PAYMENT-REQUIRED&#x27;);
+console.log(&#x27;Status:&#x27;, response.status);
+console.log(&#x27;Header:&#x27;, raw);
+console.log(&#x27;Decoded:&#x27;, JSON.parse(Buffer.from(raw, &#x27;base64&#x27;).toString(&#x27;utf8&#x27;)));
+console.log(&#x27;Body:&#x27;, await response.json());</code></pre>
+<p>Save it as <code>inspect-402.mjs</code> and run <code>node inspect-402.mjs</code>. This probes whichever resource-server variant is running. A full Base64 header changes with the generated quote ID and merchant address, so the examples above use descriptive placeholders instead of a stale header.</p>
+<p>In the browser, fetch reads a JSON body with <code>await response.json()</code>. To inspect a header without the SDK, <code>JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(header), c =&gt; c.charCodeAt(0))))</code> preserves UTF-8 correctly. <code>atob</code> alone returns a binary string, not parsed JSON. The default frontend proxies <code>/api</code> through its own origin. A separate cross-origin client would also need CORS permission to send PAYMENT-SIGNATURE and expose PAYMENT-REQUIRED and PAYMENT-RESPONSE to browser JavaScript.</p>
+<h2 id="6-rejections-and-recovery-data">6 Rejections and recovery data</h2>
+<div class="table-wrap"><table><thead><tr><th>Condition</th><th>Status and data returned by this starter</th><th>Next action</th></tr></thead><tbody><tr><td>Facilitator verification rejected</td><td>402, PAYMENT-REQUIRED challenge, body error payment_invalid plus verification verdict, paymentStatus not_submitted, canRequestNewQuote true</td><td>Inspect invalidReason and resolve it before requesting new terms. This body differs from the initial unpaid 402. No settlement call happened.</td></tr><tr><td>Expired quote with no bound payment</td><td>410, body error quote_expired, paymentStatus not_submitted, canRequestNewQuote true, instruction</td><td>The server explicitly permits a fresh quote; no payment was submitted for it.</td></tr><tr><td>Invalid envelope or mismatched terms</td><td>400, body error malformed_payment or payment_terms_mismatch</td><td>Inspect the payload. These responses do not advertise a replacement-payment guarantee.</td></tr><tr><td>Payment header too large</td><td>413, body error payment_too_large</td><td>The server limits the header to 60,000 characters.</td></tr><tr><td>Transaction already belongs to another question</td><td>409, body error payment_already_used_for_another_question</td><td>A transaction cannot buy two different questions.</td></tr><tr><td>Same quote, different transaction</td><td>409, body error quote_already_bound_to_another_payment</td><td>Reconcile the original bound payment.</td></tr><tr><td>Other settlement failure</td><td>409, PAYMENT-RESPONSE receipt and error/settlement/instruction body</td><td>Inspect the evidence; retain the original payment rather than automatically signing again.</td></tr><tr><td>Resource server backend unavailable</td><td>503, body error backend_unavailable and instruction</td><td>A lost response can follow submission; retain and retry the same signed payment.</td></tr><tr><td>Unknown quote ID</td><td>404, body error quote_not_found</td><td>Check the resource URL.</td></tr></tbody></table></div>
+<p>These error codes, safety flags, and retry instructions are application behavior. The <a href="architecture.html#payment-states-and-retries">architecture guide</a> describes the persisted ownership and recovery model. The illustration summarizes the normal exchange; this table covers alternate paths.</p>
+<h2 id="where-this-is-implemented">Where this is implemented</h2>
+<ul><li><a href="https://github.com/satran004/cardano-x402-starter/blob/main/resource-server/src/main/java/demo/x402/PaidAnswers.java">PaidAnswers.java</a>: creates the challenge, decodes the paid header, enforces stored terms and ownership, and encodes response headers.</li><li><a href="https://github.com/satran004/cardano-x402-starter/blob/main/resource-server/src/main/java/demo/x402/FacilitatorClient.java">FacilitatorClient.java</a>: sends decoded objects to /verify and /settle as JSON.</li><li><a href="https://github.com/satran004/cardano-x402-starter/blob/main/resource-server-js/src/answers.mjs">answers.mjs</a>: equivalent request gate using official SDK header helpers.</li><li><a href="https://github.com/satran004/cardano-x402-starter/blob/main/frontend/src/payment.ts">payment.ts</a>: assembles signed CBOR, Base64-encodes the transaction, and creates the outer PAYMENT-SIGNATURE header.</li><li><a href="https://github.com/satran004/cardano-x402-starter/blob/main/frontend/src/App.tsx">App.tsx</a>: decodes payment requirements and receipts, reads JSON answer bodies, and retains pending payments.</li></ul><footer><a href="https://github.com/satran004/cardano-x402-starter/blob/main/docs/wire-format.md">View Markdown source</a>Cardano preprod learning example · Test ADA · x402 v2</footer></main></div><script>if (matchMedia("(max-width: 900px)").matches) document.querySelector(".contents details").open = false;</script></body></html>

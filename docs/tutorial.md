@@ -4,6 +4,8 @@ This tutorial demonstrates a complete HTTP payment handshake using test ADA on C
 
 ![Cardano x402 sequence from request through wallet signing and confirmed answer](images/payment-flow.svg)
 
+For the data behind each arrow, see [HTTP messages and encoding](wire-format.md). That guide illustrates headers versus bodies, shows complete decoded 402/payment/receipt objects, explains the two Base64 layers and Cardano CBOR, and covers pending and rejected responses.
+
 ## Which parts come from x402
 
 Read this example as three layers: the shared x402 protocol, its Cardano mechanism, and the application that sells an answer. The protocol does not prescribe Spring Boot, Express, a wallet connector, or a database.
@@ -121,6 +123,12 @@ If a wallet approval takes longer than the quote lifetime, the server can return
 After sufficient chain evidence, the server returns **HTTP 200**, the answer, and `PAYMENT-RESPONSE` containing the settlement receipt. The frontend displays the answer and a preprod transaction explorer link. Open the link to inspect the merchant output and fee independently.
 
 Retrying this same question with the same payment returns its saved answer. Reusing that transaction for a different question returns **409 Conflict**, enforced by a unique Cardano transaction ID in the resource database. Transaction submission idempotency alone does not provide this resource-level binding.
+
+The message illustration below distinguishes Base64 JSON headers from ordinary JSON bodies and the nested Cardano transaction. [HTTP messages and encoding](wire-format.md) expands each object, lists every field used here, and includes a script to inspect a live 402 without spending.
+
+![Data returned with 402, sent with a signed retry, and returned with pending or successful settlement](images/http-messages.svg)
+
+[Open the HTTP message illustration at full size](images/http-messages.svg).
 
 ## Payment types supported on Cardano
 

@@ -51,4 +51,4 @@ An expired quote with no transaction binding never reaches verify or settle. The
 
 ## Illustrations and documentation
 
-The SVG sequence diagram is editable source in `docs/images/payment-flow.svg`. The same illustration and tutorial are served by the separate frontend at `/tutorial.html`. Run `python3 scripts/render-tutorial.py` after editing the Markdown; then rebuild the frontend container to publish those local changes.
+The editable SVGs are `docs/images/payment-flow.svg` for the sequence and `docs/images/http-messages.svg` for data exchanged at each stage. [HTTP messages and encoding](wire-format.md) includes full decoded JSON examples and recovery responses. The same illustrations and guides are served by the separate frontend at `/tutorial.html` and `/wire-format.html`. Run `python3 scripts/render-tutorial.py` after editing the Markdown; then rebuild the frontend container to publish those local changes. Documentation changes pushed to main also deploy automatically to [GitHub Pages](https://satran004.github.io/cardano-x402-starter/).

@@ -4,6 +4,8 @@
 .local/
 .runtime/
 .git-metadata/
+_site/
+.playwright-mcp/
 *.pem
 *.key
 *.p12

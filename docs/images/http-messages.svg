@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="1220" viewBox="0 0 960 1220" role="img" aria-labelledby="title desc">
+<title id="title">What data travels through the Cardano x402 handshake?</title>
+<desc id="desc">The unpaid 402 carries a Base64 JSON PaymentRequired header and plain JSON challenge body. The paid GET carries a Base64 JSON PaymentPayload with a nested Base64 CBOR transaction. Verify and settle use plain JSON. Pending and successful responses carry a Base64 JSON receipt and plain JSON bodies.</desc>
+<rect width="960" height="1220" rx="20" fill="#0e1925"/>
+<text x="32" y="42" font-family="system-ui,sans-serif" font-size="26" fill="#eaf2f0">The data behind each HTTP exchange</text>
+<text x="32" y="71" font-family="system-ui,sans-serif" font-size="16" fill="#a6ecc6">Headers: Base64(JSON UTF-8) · Bodies: plain JSON · Transaction: Base64(CBOR)</text>
+<rect x="24" y="96" width="912" height="135" rx="12" fill="#13232f" stroke="#375747"/>
+<text x="42" y="125" font-family="system-ui,sans-serif" font-size="19" fill="#a6ecc6">1  Browser → Resource server</text>
+<text x="42" y="151" font-family="system-ui,sans-serif" font-size="15" fill="#eaf2f0">GET /api/answers/{quoteId} · No payment header · No request body</text>
+<text x="42" y="179" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">The earlier POST /api/quotes stored the question and returned its resource URL.</text>
+<text x="42" y="201" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">Quote creation and question IDs are demo API choices, not x402 endpoints.</text>
+<rect x="24" y="243" width="912" height="176" rx="12" fill="#13232f" stroke="#375747"/>
+<text x="42" y="272" font-family="system-ui,sans-serif" font-size="19" fill="#a6ecc6">2  Resource server → Browser</text>
+<text x="42" y="298" font-family="system-ui,sans-serif" font-size="15" fill="#eaf2f0">HTTP 402 Payment Required</text>
+<text x="42" y="326" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">PAYMENT-REQUIRED = Base64(JSON {x402Version:2, resource, accepts:[terms]})</text>
+<text x="42" y="348" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">terms = {scheme:"exact", network:"cardano:preprod", asset:"lovelace",</text>
+<text x="42" y="370" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">         amount:"2000000", payTo, maxTimeoutSeconds:600, extra}</text>
+<text x="42" y="392" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">Body = same challenge as plain JSON · No answer · No funds submitted</text>
+<rect x="24" y="431" width="912" height="176" rx="12" fill="#13232f" stroke="#375747"/>
+<text x="42" y="460" font-family="system-ui,sans-serif" font-size="19" fill="#a6ecc6">3  Browser → Resource server</text>
+<text x="42" y="486" font-family="system-ui,sans-serif" font-size="15" fill="#eaf2f0">Same GET after CIP-30 wallet signing · No request body</text>
+<text x="42" y="514" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">PAYMENT-SIGNATURE = Base64(JSON {x402Version:2, resource, accepted, payload})</text>
+<text x="42" y="536" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">accepted = one selected terms object from accepts</text>
+<text x="42" y="558" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">payload = {transaction: Base64(signed Cardano CBOR), nonce:"prevTxHash#0"}</text>
+<text x="42" y="580" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">Outer Base64 → JSON → inner Base64 → CBOR transaction + signature witnesses</text>
+<rect x="24" y="619" width="912" height="176" rx="12" fill="#13232f" stroke="#375747"/>
+<text x="42" y="648" font-family="system-ui,sans-serif" font-size="19" fill="#a6ecc6">4  Resource server ↔ Facilitator</text>
+<text x="42" y="674" font-family="system-ui,sans-serif" font-size="15" fill="#eaf2f0">POST /verify, then POST /settle · Content-Type: application/json</text>
+<text x="42" y="702" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">Body = {x402Version:2, paymentPayload:decodedPayment, paymentRequirements:terms}</text>
+<text x="42" y="724" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">/verify → {isValid:true, payer, ...} · Read-only; no broadcast</text>
+<text x="42" y="746" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">/settle → {success, transaction:"txHash", network, payer, extra, ...}</text>
+<text x="42" y="768" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">Facilitator submits to Cardano and observes chain evidence. No outer Base64.</text>
+<rect x="24" y="807" width="912" height="176" rx="12" fill="#13232f" stroke="#375747"/>
+<text x="42" y="836" font-family="system-ui,sans-serif" font-size="19" fill="#a6ecc6">5  Resource server → Browser (if still pending)</text>
+<text x="42" y="862" font-family="system-ui,sans-serif" font-size="15" fill="#eaf2f0">HTTP 202 Accepted · Demo recovery convention</text>
+<text x="42" y="890" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">PAYMENT-RESPONSE = Base64(JSON {success:false, errorReason:"settlement_pending",</text>
+<text x="42" y="912" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">                               transaction:"txHash", network, payer, extra, ...})</text>
+<text x="42" y="934" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">Body = {error:"settlement_pending", settlement:receipt, instruction:retrySamePayment}</text>
+<text x="42" y="956" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">No answer · Retain and retry identical PAYMENT-SIGNATURE · Do not sign again</text>
+<rect x="24" y="995" width="912" height="176" rx="12" fill="#13232f" stroke="#375747"/>
+<text x="42" y="1024" font-family="system-ui,sans-serif" font-size="19" fill="#a6ecc6">6  Resource server → Browser (confirmed)</text>
+<text x="42" y="1050" font-family="system-ui,sans-serif" font-size="15" fill="#eaf2f0">HTTP 200 OK · Required evidence: inclusion + at least one newer block</text>
+<text x="42" y="1078" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">PAYMENT-RESPONSE = Base64(JSON {success:true, transaction:"txHash", network,</text>
+<text x="42" y="1100" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">                               payer, extra:{status:"confirmed", confirmations:1, ...}, ...})</text>
+<text x="42" y="1122" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">Body = {result:{question, answer, generatedAt, source}, settlement:receipt}</text>
+<text x="42" y="1144" font-family="ui-monospace,monospace" font-size="13.8" fill="#b5c8d6">Answer is plain JSON in the body · Receipt is in the header and copied in the body</text>
+<text x="32" y="1200" font-family="system-ui,sans-serif" font-size="13" fill="#94a9ba">Placeholders summarize objects. Full fields, decoded JSON, byte conversions and errors: wire-format.html</text>
+</svg>

@@ -1,5 +1,7 @@
 # Cardano x402 starter
 
+[Read the documentation and illustrated tutorial](https://satran004.github.io/cardano-x402-starter/)
+
 Run an HTTP payment handshake on Cardano preprod with three separate applications: the Cardano Foundation facilitator, a Java Spring Boot resource server, and a React frontend using CF Connect with Wallet and the official x402 Cardano SDK. The resource is a short educational answer, priced at **2 tADA plus the Cardano network fee**.
 
 The preprod key is configured privately in `.env`. A new merchant receiving wallet is stored in `.local/merchant.json`; its recovery phrase is never exposed to the browser or facilitator. Both files are ignored by Git.
@@ -36,6 +38,7 @@ The browser calls `/api` on the frontend origin. Vite proxies those requests to 
 ## Read and inspect
 
 - [Tutorial with payment flow illustration](docs/tutorial.md)
+- [Published documentation website](https://satran004.github.io/cardano-x402-starter/)
 - [Architecture and implementation decisions](docs/architecture.md)
 - [Validation evidence and remaining live check](docs/validation.md)
 - [Upstream facilitator API](facilitator/docs/api.md)

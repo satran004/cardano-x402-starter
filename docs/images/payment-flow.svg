@@ -27,13 +27,13 @@
 <line x1="120" y1="207" x2="585" y2="207" stroke="#7eab9b" stroke-width="2" marker-end="url(#arrow)"/>
 <text x="352.5" y="197" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#7eab9b">1  GET answer without payment</text>
 <line x1="585" y1="255" x2="120" y2="255" stroke="#a6ecc6" stroke-width="2" marker-end="url(#lightarrow)"/>
-<text x="352.5" y="245" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#a6ecc6">2  HTTP 402 + PAYMENT-REQUIRED</text>
+<text x="352.5" y="245" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#a6ecc6">2  402 + PAYMENT-REQUIRED (Base64 JSON)</text>
 <line x1="120" y1="315" x2="350" y2="315" stroke="#7eab9b" stroke-width="2" marker-end="url(#arrow)"/>
 <text x="235.0" y="305" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#7eab9b">3  Build and sign</text>
 <line x1="350" y1="365" x2="120" y2="365" stroke="#a6ecc6" stroke-width="2" marker-end="url(#lightarrow)"/>
 <text x="235.0" y="355" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#a6ecc6">Signed transaction</text>
 <line x1="120" y1="417" x2="585" y2="417" stroke="#7eab9b" stroke-width="2" marker-end="url(#arrow)"/>
-<text x="352.5" y="407" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#7eab9b">4  GET + PAYMENT-SIGNATURE</text>
+<text x="352.5" y="407" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#7eab9b">4  GET + PAYMENT-SIGNATURE (Base64 JSON)</text>
 <line x1="585" y1="461" x2="820" y2="461" stroke="#7eab9b" stroke-width="2" marker-end="url(#arrow)"/>
 <text x="702.5" y="451" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#7eab9b">5  POST /verify</text>
 <line x1="820" y1="502" x2="585" y2="502" stroke="#a6ecc6" stroke-width="2" marker-end="url(#lightarrow)"/>
@@ -47,5 +47,5 @@
 <line x1="820" y1="667" x2="585" y2="667" stroke="#a6ecc6" stroke-width="2" marker-end="url(#lightarrow)"/>
 <text x="702.5" y="657" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#a6ecc6">success + tx ID</text>
 <line x1="585" y1="707" x2="120" y2="707" stroke="#a6ecc6" stroke-width="2" marker-end="url(#lightarrow)"/>
-<text x="352.5" y="697" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#a6ecc6">7  HTTP 200 + answer + PAYMENT-RESPONSE</text>
+<text x="352.5" y="697" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#a6ecc6">7  200 + JSON answer + PAYMENT-RESPONSE (Base64 JSON)</text>
 </svg>
