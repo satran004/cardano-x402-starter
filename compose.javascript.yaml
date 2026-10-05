@@ -1,0 +1,7 @@
+# Replaces the Spring Boot service; frontend URLs and persisted quotes stay the same.
+# docker compose -f compose.yaml -f compose.javascript.yaml up -d --build
+services:
+  resource-server:
+    build: ./resource-server-js
+    environment:
+      DATABASE_URL: postgres://postgres:local-demo-only@postgres:5432/postgres

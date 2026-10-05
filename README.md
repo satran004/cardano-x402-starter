@@ -39,6 +39,21 @@ The browser calls `/api` on the frontend origin. Vite proxies those requests to 
 - [Architecture and implementation decisions](docs/architecture.md)
 - [Validation evidence and remaining live check](docs/validation.md)
 - [Upstream facilitator API](facilitator/docs/api.md)
+- [Optional JavaScript resource server using official x402 packages](resource-server-js/README.md)
+
+The tutorial separates standard x402 messages from Cardano mechanism semantics and this demo's application choices. It also explains direct payments, Masumi escrow, custom scripts, ADA/native-token assets, fees, and confirmations.
+
+## Choose the resource server
+
+Spring Boot is the default. An optional **plain JavaScript / Node.js / Express** implementation uses official `@x402/core` and `@x402/cardano` server APIs. Both expose the same endpoints and share the PostgreSQL payment journal.
+
+```bash
+./scripts/start.sh js    # Use JavaScript with the existing frontend and CF facilitator
+./scripts/start.sh java  # Switch back to Spring Boot
+docker compose stop     # Stop either variant, retaining data
+```
+
+Run one resource-server implementation at a time. JavaScript retains the same preprod-only direct ADA payment policy. Its SDK prepares the local answer before settlement and releases it after confirmation; see the tutorial for the difference from Spring Boot's handler timing.
 
 ```bash
 docker compose ps
@@ -53,6 +68,6 @@ Stopping preserves the database and merchant wallet. Keep the PostgreSQL volume:
 
 The root `.env.example` documents `BLOCKFROST_PROJECT_ID`, `PAY_TO`, and `PAYMENT_AMOUNT`. `scripts/import-key.py` imports only a preprod token from `~/keys` without printing credentials. To use your own merchant, set `PAY_TO` to your preprod receiving address before setup. The facilitator does not need a wallet or test ADA.
 
-This demo uses x402 **v2**: `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, and `PAYMENT-RESPONSE`. The official Java library currently documents v1 `X-PAYMENT`; the Spring Boot application therefore implements the small v2 HTTP adapter. The browser uses official `@x402/core` and `@x402/cardano` 2.26.0, with Evolution for its CIP-30 transaction-building adapter.
+This demo uses x402 **v2**: `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, and `PAYMENT-RESPONSE`. At this starter's upstream compatibility revision, the official Java library documents v1 `X-PAYMENT`; the Spring Boot application therefore implements the small v2 HTTP adapter. The browser uses official `@x402/core` and `@x402/cardano` 2.26.0, with Evolution for its CIP-30 transaction-building adapter.
 
 This is a local, single-resource-server tutorial. API ports bind to loopback. The development frontend, read-only Blockfrost proxy, lack of account authentication, and serialized resource-server settlement are deliberate local-demo choices. See [architecture](docs/architecture.md) before adapting this to a hosted service.

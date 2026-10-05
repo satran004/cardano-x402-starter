@@ -4,13 +4,30 @@ This tutorial demonstrates a complete HTTP payment handshake using test ADA on C
 
 ![Cardano x402 sequence from request through wallet signing and confirmed answer](images/payment-flow.svg)
 
+## Which parts come from x402
+
+Read this example as three layers: the shared x402 protocol, its Cardano mechanism, and the application that sells an answer. The protocol does not prescribe Spring Boot, Express, a wallet connector, or a database.
+
+| Part you see in this demo | Where it is defined |
+| --- | --- |
+| HTTP 402 with PAYMENT-REQUIRED, a paid retry with PAYMENT-SIGNATURE, and a receipt in PAYMENT-RESPONSE | Standard x402 v2 HTTP transport; each header carries Base64-encoded JSON. |
+| x402Version, resource, accepts, and the selected accepted requirements | Standard x402 v2 message schemas. |
+| scheme, network, asset, amount, payTo, maxTimeoutSeconds, and extra | Standard requirements fields; each mechanism interprets its asset and extra values. |
+| /supported, /verify, /settle, isValid, success, transaction, and network | Standard facilitator contract. |
+| Signed Cardano CBOR transaction, input-reference nonce, lovelace, and Cardano transfer methods | Cardano exact mechanism. |
+| POST /api/quotes, question UUIDs, PostgreSQL ownership, session storage, price 2 tADA, and the fresh-quote buttons | This application's design. |
+
+The first four rows follow the [core v2 specification](https://github.com/x402-foundation/x402/blob/6323ec74c85607e706e0722dd294365a7fb57768/specs/x402-specification-v2.md) and [HTTP transport specification](https://github.com/x402-foundation/x402/blob/6323ec74c85607e706e0722dd294365a7fb57768/specs/transports-v2/http.md). These links pin the source revision used by the facilitator's SDK 2.26.0 compatibility target. Later protocol versions may add capabilities.
+
+The JSON body copied alongside the 402 header is a convenience for inspection. The canonical HTTP payment information is in the headers. Our 202 pending response and 410 quote-expired response, including paymentStatus and canRequestNewQuote, are application recovery decisions; they are not additional standard x402 headers or schemas.
+
 ## What each application does
 
 The **frontend** asks for an answer and shows the protocol messages. CF Connect with Wallet discovers browser wallets and manages the connection. Evolution builds a Cardano transaction and asks the CIP-30 wallet to sign it. The official x402 Cardano client turns that result into a payment payload; the official core library encodes it as an HTTP header.
 
 The **resource server** owns the price and receiving address. It issues the HTTP 402 challenge, compares the returned payment to its stored terms, and calls the facilitator. It releases the answer only after sufficient settlement evidence. It stores each question and its payment in PostgreSQL so a transaction cannot purchase a different question on retry.
 
-The **facilitator** verifies the signed payment, broadcasts it, and checks the chain through Blockfrost. It holds no signing keys. The payer wallet supplies both the resource price and network fee. These roles follow the [CF facilitator API](https://github.com/cardano-foundation/cardano-x402-facilitator/blob/97add9f/docs/api.md) and [official Cardano x402 mechanism](https://github.com/x402-foundation/x402/tree/main/typescript/packages/mechanisms/cardano).
+The **facilitator** verifies the signed payment, broadcasts it, and checks the chain through Blockfrost. It holds no signing keys. The payer wallet supplies both the resource price and network fee. These roles follow the [CF facilitator API](https://github.com/cardano-foundation/cardano-x402-facilitator/blob/97add9f/docs/api.md) and [official Cardano x402 mechanism](https://github.com/x402-foundation/x402/tree/6323ec74c85607e706e0722dd294365a7fb57768/typescript/packages/mechanisms/cardano).
 
 ## Prepare your environment
 
@@ -19,6 +36,8 @@ The **facilitator** verifies the signed payment, broadcasts it, and checks the c
 3. Run `./scripts/start.sh`. The initial build downloads dependencies and runs server tests plus the facilitator's native derivation checks.
 4. Run `./scripts/check.sh` after startup. It checks live facilitator readiness, the chain proxy, the 402 header, frontend routing, and malformed-payment rejection without spending funds.
 5. Open `http://localhost:5174` in the browser with your wallet extension installed.
+
+Spring Boot is the default resource server. To run the optional JavaScript implementation instead, use `./scripts/start.sh js`. It replaces only the resource-server container; the frontend, facilitator, merchant configuration, database, and port 8081 stay the same. Use `./scripts/start.sh java` to switch back. Stop either variant with `docker compose stop`.
 
 Install a CIP-30 wallet from its official source, select **preprod** in its settings, and obtain test ADA from the [official faucet](https://docs.cardano.org/cardano-testnets/tools/faucet/). The merchant and facilitator do not need starting funds. A wallet with at least 3 tADA can pay this demo price and fee, subject to the wallet's UTxO layout.
 
@@ -81,6 +100,8 @@ PAYMENT-SIGNATURE: <base64 x402 v2 payment payload>
 
 The decoded payload contains `x402Version`, `resource`, `accepted`, and `payload`. Cardano's inner payload contains the signed transaction as base64 CBOR and the nonce. The resource server requires the `accepted` terms to match its stored quote and the resource URL to identify that question.
 
+The outer message follows x402 v2; the transaction and nonce are Cardano-specific. The browser-wallet connection uses CIP-30, a separate Cardano standard. CF Connect with Wallet and our Evolution adapter are implementation choices: another client can create the same x402 payment without using React or a browser extension.
+
 Spring Boot calls `POST /verify` on the facilitator. **HTTP 200 from verify is not enough:** the server checks `isValid: true`. On rejection, it returns 402 and never calls settlement. On acceptance, it computes the Cardano transaction ID from the original transaction body and binds that ID to the question in PostgreSQL before submission.
 
 ## Step 4 Submit and observe settlement
@@ -101,6 +122,72 @@ After sufficient chain evidence, the server returns **HTTP 200**, the answer, an
 
 Retrying this same question with the same payment returns its saved answer. Reusing that transaction for a different question returns **409 Conflict**, enforced by a unique Cardano transaction ID in the resource database. Transaction submission idempotency alone does not provide this resource-level binding.
 
+## Payment types supported on Cardano
+
+Separate the **scheme** (the payment agreement), **asset** (what is paid), and **assetTransferMethod** (how it moves). The pinned Cardano SDK and CF facilitator implement the **exact** scheme. The broader x402 repository also defines other schemes, but this starter does not provide Cardano upto, batch settlement, or recurring billing.
+
+The [Cardano exact specification](https://github.com/x402-foundation/x402/blob/6323ec74c85607e706e0722dd294365a7fb57768/specs/schemes/exact/scheme_exact_cardano.md) defines these three transfer methods under the same scheme:
+
+| extra.assetTransferMethod | What the payment does | Used by this starter |
+| --- | --- | --- |
+| default | Sends the quoted asset to the merchant address. | Yes: direct 2 tADA payment. |
+| masumi | Locks funds in the Masumi vested_pay escrow against seller-signed terms and a defined lock datum. Settlement proves the lock, not payout to the seller. Later release, result, refund, and dispute transactions are outside this x402 purchase. | No: requires escrow quote issuance and lifecycle tooling. |
+| script | Locks funds at a server-defined script address. The server supplies the script/hash, parameters, and any required datum; the facilitator checks the address binding, not arbitrary datum semantics. | No: requires a contract-specific builder and lifecycle. |
+
+These are Cardano mechanism semantics, not optional decorative x402 extensions. Masumi's escrow transfer method also does not mean selecting the generic x402 escrow payment-flow model. The pinned SDK declares authorization for all three methods.
+
+The [official Cardano SDK documentation](https://github.com/x402-foundation/x402/blob/6323ec74c85607e706e0722dd294365a7fb57768/typescript/packages/mechanisms/cardano/README.md) describes ADA and native-token support. ADA uses asset lovelace, with amount expressed in lovelace. A native token uses asset `<policyIdHex>.<assetNameHex>` and an integer amount in its smallest unit. A fungible stablecoin such as USDM is a native-token payment; its asset identity is network-specific. Token outputs still need sufficient ADA for minimum UTxO value, and the payer supplies ADA for fees.
+
+The mechanism recognizes cardano:mainnet, cardano:preprod, and cardano:preview. A facilitator serves only its configured networks. This repository configures preprod, and both resource servers and the browser adapter deliberately accept only lovelace with direct transfers. Changing only the asset string will not add token, escrow, or script support to this frontend.
+
+For Masumi experiments, read the SDK's **Relationship to masumi-payment-service** section: its seller authorization differs from that service's signature format, so the pinned SDK's locks need x402-aware lifecycle tooling.
+
+## Fees and settlement evidence
+
+The bundled [facilitator API](https://github.com/cardano-foundation/cardano-x402-facilitator/blob/97add9f/docs/api.md) advertises the supported transfer methods, fee policy, and confirmation range through GET /supported. Check this endpoint when choosing a policy; SDK support alone does not establish a running facilitator's capabilities. Fee sponsorship is not supported by this pinned Cardano mechanism: areFeesSponsored is false and the payer signs a complete transaction including fees.
+
+| l1Confirmations | Evidence needed for success |
+| --- | --- |
+| -1 | Facilitator's broadcast acceptance; requires explicit operator opt-in. |
+| 0 | Canonical block inclusion. |
+| 1 through 20 | Inclusion plus that many newer canonical blocks, within the advertised range. |
+
+This demo requests 1 and releases no answer on mempool acceptance. The confirmation count measures observed chain depth, not irreversible finality. These Cardano policy details are separate from the standard x402 success and transaction receipt fields.
+
+## How the resource servers control access
+
+The Spring Boot controller reads PAYMENT-SIGNATURE and calls PaidAnswers.answer. That service performs the payment gate explicitly; there is no global payment filter on every endpoint. It builds the v2 envelope itself and delegates chain validation to the CF facilitator.
+
+The optional JavaScript implementation uses Express with the official server-side packages:
+
+```js
+import { HTTPFacilitatorClient, x402ResourceServer } from '@x402/core/server';
+import { ExactCardanoScheme } from '@x402/cardano/exact/server';
+
+const facilitator = new HTTPFacilitatorClient({
+  url: facilitatorUrl,
+  timeoutMs: 90_000,
+});
+const payments = new x402ResourceServer(facilitator)
+  .register('cardano:preprod', new ExactCardanoScheme());
+await payments.initialize();
+```
+
+The SDK queries /supported, parses the explicit lovelace price, validates selected Cardano capabilities, builds the requirements and 402 envelope, and runs verifyPayment and settlePayment. Official core HTTP helpers encode and decode all three payment headers. Our code supplies the Express routes, question records, expiration policy, transaction ownership, and answer logic. We use the core server API directly so durable retries can bypass fresh verification of already-spent inputs.
+
+```js
+const verified = await payments.verifyPayment(incoming, row.requirements);
+// Reject isValid: false; otherwise prepare the local answer and persist the binding.
+const settled = await payments.settlePayment(incoming, row.requirements);
+// Release the prepared answer only on success with the expected hash and depth.
+```
+
+These excerpts omit the surrounding checks; read resource-server-js/src/answers.mjs for the complete gate. Core retries a transaction-carrying settlement_pending result once automatically. If it remains pending, our route returns 202 and retains the exact payload for the browser's next retry. PostgreSQL holds the binding before submission; a session advisory lock coordinates JavaScript retries for the same quote.
+
+The Cardano SDK describes authorization ordering as **verify → resource handler → settle → response**. JavaScript follows this ordering by preparing its pure local answer before settlement, then publishing it only after confirmation. Spring Boot currently generates its answer after settlement. That is a deliberate difference in the demo's business-handler timing, not a new Cardano paymentFlow. For a fallible or costly resource, prepare it after verification and before charging, and make its work recoverable across retries. See the [Cardano mechanism payment flow](https://github.com/x402-foundation/x402/blob/6323ec74c85607e706e0722dd294365a7fb57768/specs/schemes/exact/scheme_exact_cardano.md#payment-flow).
+
+SDK 2.26.0 omits extra.assetTransferMethod when its resolved method is default. Spring Boot emits default explicitly. Both select the same Cardano method; the frontend accepts both encodings while refusing masumi and script. The server always compares the payer's accepted object to the exact requirements it stored.
+
 ## Inspect the implementation
 
 | File | Responsibility |
@@ -110,9 +197,13 @@ Retrying this same question with the same payment returns its saved answer. Reus
 | `resource-server/src/main/java/demo/x402/PaidAnswers.java` | Quote persistence, v2 handshake, payment ownership, answer release |
 | `resource-server/src/main/java/demo/x402/FacilitatorClient.java` | Facilitator supported, verify, and settle HTTP calls |
 | `resource-server/src/main/java/demo/x402/BlockfrostProxy.java` | Restricted chain reads with the private Blockfrost key |
+| `resource-server-js/src/sdk.mjs` | Official JavaScript resource server, Cardano scheme registration, facilitator client |
+| `resource-server-js/src/answers.mjs` | SDK payment calls, immutable quotes, answer preparation and release |
+| `resource-server-js/src/store.mjs` | Shared PostgreSQL journal and per-quote JavaScript coordination |
+| `compose.javascript.yaml` | Optional JavaScript resource-server override |
 | `compose.yaml` | Separate applications and durable PostgreSQL volume |
 
-The official Java x402 library still documents a v1 filter using `X-PAYMENT` and a different requirements shape. This example implements a small v2 transport adapter in Spring Boot; it does not claim to use that v1 filter. See the [official Java README](https://github.com/x402-foundation/x402/blob/main/java/README.md).
+At the compatibility revision used here, the official Java x402 library documents a v1 filter using `X-PAYMENT` and a different requirements shape. This example implements a small v2 transport adapter in Spring Boot; it does not use that v1 filter. See the [pinned official Java README](https://github.com/x402-foundation/x402/blob/6323ec74c85607e706e0722dd294365a7fb57768/java/README.md). The optional JavaScript server uses the official v2 packages directly.
 
 ## Common issues
 

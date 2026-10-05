@@ -15,7 +15,7 @@ export function validateOffer(required: PaymentRequired, config: DemoConfig, res
   if (required.x402Version !== 2 || required.resource.url !== resourceUrl || required.accepts.length !== 1
     || !terms || terms.scheme !== 'exact' || terms.network !== 'cardano:preprod'
     || terms.asset !== 'lovelace' || terms.payTo !== config.payTo || terms.amount !== config.amount
-    || terms.extra?.assetTransferMethod !== 'default' || terms.maxTimeoutSeconds !== 600
+    || (terms.extra?.assetTransferMethod !== undefined && terms.extra.assetTransferMethod !== 'default') || terms.maxTimeoutSeconds !== 600
     || (terms.extra.confirmationPolicy as { l1Confirmations?: number })?.l1Confirmations !== 1)
     throw new Error('The payment request does not match the demo price, recipient, resource, or preprod policy.');
   return terms;

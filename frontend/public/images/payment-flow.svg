@@ -14,7 +14,7 @@
 <line x1="350" y1="166" x2="350" y2="686" stroke="#385064" stroke-dasharray="5 7"/>
 <rect x="494" y="95" width="182" height="68" rx="10" fill="#1a2d39" stroke="#375747"/>
 <text x="585" y="123" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#bcebd0">Resource server</text>
-<text x="585" y="145" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#9eb4c5">Spring Boot</text>
+<text x="585" y="145" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#9eb4c5">Spring Boot or Node.js</text>
 <line x1="585" y1="166" x2="585" y2="686" stroke="#385064" stroke-dasharray="5 7"/>
 <rect x="729" y="95" width="182" height="68" rx="10" fill="#1a2d39" stroke="#375747"/>
 <text x="820" y="123" text-anchor="middle" font-family="system-ui,sans-serif" font-size="15" font-weight="600" fill="#bcebd0">Facilitator</text>

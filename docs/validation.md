@@ -1,6 +1,6 @@
 # Cardano x402 demo validation
 
-Validation on 2 October 2026, repeated for the expiry fix on 4 October 2026, established that the applications build, the configured preprod key works, and the live services issue a correct x402 v2 challenge. Funded wallet settlement is still a separate manual check; no payment was submitted during these checks.
+Validation on 2 October 2026, repeated for the expiry fix on 4 October and the optional JavaScript server on 5 October 2026, established that the applications build, the configured preprod key works, and both resource-server variants issue a correct x402 v2 challenge. Funded wallet settlement is still a separate manual check; no payment was submitted during these checks.
 
 ## Completed checks
 
@@ -9,15 +9,19 @@ Validation on 2 October 2026, repeated for the expiry fix on 4 October 2026, est
 | CF facilitator Docker image | Passed | Unmodified upstream Dockerfile built on Linux AMD64 and ran MasumiBlueprintTest and ScriptAddressConformanceTest. |
 | Spring Boot application | Passed | Java 21 compile, executable JAR, and container build. |
 | Server payment behavior | 11 tests passed | V2 unpaid challenge, invalid verification verdict, altered price or recipient, idempotent answer retry, pending reconciliation, cross-question replay rejection, lost settlement response, insufficient depth evidence, and expiry recovery for unsigned, unsubmitted, and already-bound payments. |
-| Frontend offer policy | 7 tests passed | Expected offer accepted; altered amount, network, asset, recipient, resource URL, and mempool-only policy rejected. |
+| Frontend offer policy | 11 tests passed | Expected offer accepted, including the official SDK's omitted default selector; altered amount, network, asset, recipient, resource URL, mempool-only policy, and unsupported transfer methods rejected. |
 | CIP-30 adapter | 5 tests passed | Offline transaction built and cryptographically signed through a simulated CIP-30 API, accepted by the official Cardano x402 verifier; mainnet, empty-wallet, and nearly expired quotes rejected before signing; transaction validity capped to quote expiry. |
 | Browser payment recovery | 12 tests passed | A saved signature is replaceable only after an explicit not-submitted response for an expired quote or invalid payment. Pending, ambiguous, and error responses retain it. |
+| JavaScript payment gate | 13 tests passed | Real official core/Cardano SDK and HTTP transport against a fake facilitator: unpaid challenge, verified settlement, cached retry, rejection, immutable terms, expiry, pending retry, replay, lost response, confirmation evidence, proxy restrictions, and startup capability/readiness behavior. |
+| JavaScript PostgreSQL persistence | 1 test passed | Disposable PostgreSQL 17 checks binding and prepared-answer recovery after reopening the store, unique transaction ownership, and concurrent retry locking. |
 | Frontend production bundle | Passed | TypeScript and Vite build. Dependency warnings include a large SDK bundle and ignored React use client directives. |
 | Live preprod Blockfrost key | Passed | Authenticated latest-block read against hosted preprod Blockfrost. Key contents were not included in the response. |
-| Live service smoke test | Passed | Readiness, supported capabilities, chain proxy, prohibited submission route, quote storage, v2 402 header, malformed-payment rejection, frontend API proxy, and tutorial HTTP response. |
+| Live service smoke test | Passed with both servers | Readiness, supported capabilities, chain proxy, prohibited submission route, quote storage, v2 402 header, malformed-payment rejection, frontend API proxy, and tutorial HTTP response. |
 | Sequence illustration | Passed | SVG rendered to PNG and visually inspected; labels and arrows fit. Both formats are in docs/images. |
 
 `scripts/check.sh` performs no spending. The resource server tests mock the facilitator and use H2 for the quote database. The adapter test uses a public BIP-39 test mnemonic, fabricated UTxOs, and controlled protocol parameters; it never submits a transaction. The running services use PostgreSQL and real hosted Blockfrost for the no-spend smoke checks.
+
+JavaScript tests use a fake facilitator HTTP endpoint with the real published SDK. The PostgreSQL test is skipped during ordinary npm test and Docker image builds unless TEST_DATABASE_URL points to a disposable database; it was run separately for the evidence above. No JavaScript test relies on a funded wallet. The frontend has 28 passing tests in total.
 
 ## Live wallet check remaining
 
